@@ -23,6 +23,7 @@ export const cameraSetupScreen: Screen = (root) => {
   let disposed = false;
   let handedOff = false;
   let facing: CameraSession["facing"] = "environment";
+  let stream: MediaStream | null = null;
   let calibrator = new BoxCalibrator();
   let recent: PoseFrame[] = [];
   let lastSpoken = { text: "", at: 0 };
@@ -151,24 +152,30 @@ export const cameraSetupScreen: Screen = (root) => {
   }
 
   async function flip(): Promise<void> {
-    const session = app.camera;
-    if (!session) return;
+    if (!stream) return;
     flipBtn.disabled = true;
-    facing = facing === "environment" ? "user" : "environment";
+    flipBtn.setAttribute("aria-busy", "true");
+    const next = facing === "environment" ? "user" : "environment";
     try {
-      session.stream.getTracks().forEach((t) => t.stop());
-      const stream = await openCameraFacing(video, facing);
-      if (disposed) return void stream.getTracks().forEach((t) => t.stop());
-      session.stream = stream;
-      session.facing = facing;
+      stream.getTracks().forEach((t) => t.stop());
+      const opened = await openCameraFacing(video, next);
+      if (disposed) return void opened.getTracks().forEach((t) => t.stop());
+      stream = opened;
+      facing = next;
       calibrator = new BoxCalibrator();
       recent = [];
       applyFacing();
-      session.engine.start(video, onFrame, onCameraError);
+      if (app.camera) {
+        app.camera.stream = opened;
+        app.camera.facing = next;
+        app.camera.engine.start(video, onFrame, onCameraError);
+      }
     } catch (err) {
       showError(cameraErrorMessage(err));
+    } finally {
+      flipBtn.disabled = false;
+      flipBtn.removeAttribute("aria-busy");
     }
-    flipBtn.disabled = false;
   }
 
   function onStart(): void {
@@ -181,10 +188,12 @@ export const cameraSetupScreen: Screen = (root) => {
 
   async function init(): Promise<void> {
     try {
-      const stream = await openCameraFacing(video, facing);
+      stream = await openCameraFacing(video, facing);
       if (disposed) return void stream.getTracks().forEach((t) => t.stop());
       video.addEventListener("loadedmetadata", fitCamera);
       fitCamera();
+      applyFacing();
+      flipBtn.disabled = false;
       status.textContent = "Loading pose model…";
       const engine = await PoseEngine.create();
       if (disposed) {
@@ -193,10 +202,8 @@ export const cameraSetupScreen: Screen = (root) => {
         return;
       }
       app.camera = { video, stream, engine, calibration: null, facing };
-      applyFacing();
       engine.start(video, onFrame, onCameraError);
       status.hidden = true;
-      flipBtn.disabled = false;
       checkTimer = window.setInterval(updateChecks, CHECK_INTERVAL_MS);
       updateChecks();
     } catch (err) {

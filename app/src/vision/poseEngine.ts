@@ -43,9 +43,16 @@ export async function openCamera(
   facing: CameraFacing = "environment",
   profile: CameraProfile = "setup",
 ): Promise<MediaStream> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: { ideal: facing }, ...PROFILES[profile] },
+  // Safari can ignore an `ideal` facingMode when resolution is also requested, so ask for the exact
+  // camera first and fall back to a preference on devices that only have one.
+  const request = (facingMode: ConstrainDOMString) =>
+    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode, ...PROFILES[profile] } });
+  const stream = await request({ exact: facing }).catch((err: unknown) => {
+    const name = (err as { name?: string } | null)?.name;
+    if (name === "OverconstrainedError" || name === "NotFoundError") {
+      return request({ ideal: facing });
+    }
+    throw err;
   });
   video.playsInline = true;
   video.muted = true;
