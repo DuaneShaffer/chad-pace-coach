@@ -4,6 +4,8 @@
   "echoesStart": 2.0,
   "thousandAt": 2.3,
   "freezeAt": 2.6,
-  "outlineAt": 2.72,
-  "end": 3.2
+  "thousandOut": 3.3,
+  "outlineAt": 3.3,
+  "wordmarkAt": 4.1,
+  "end": 4.5
 }

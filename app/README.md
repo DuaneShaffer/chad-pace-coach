@@ -87,8 +87,8 @@ sessions. It counts best when:
 
 The launch splash plays a pre-rendered video (`public/splash/`) with HTML overlays for the text and the wordmark match cut onto the home header. Files:
 
-- `splash.mp4` (H.264/HEVC, tried first by Safari), `splash.webm`, `poster.jpg`, `markers.json` (seconds: `revealStart`, `slowmoStart`, `echoesStart`, `thousandAt`, `freezeAt`, `outlineAt`, `end`).
+- `splash.mp4` (H.264/HEVC, tried first by Safari), `splash.webm`, `poster.jpg`, `markers.json` (seconds: `revealStart`, `slowmoStart`, `echoesStart`, `thousandAt`, `freezeAt`, `outlineAt`, `end`, plus `thousandOut` and `wordmarkAt`; the last two fall back to `freezeAt`+0.7 and `outlineAt`+0.8 if absent).
 - The video is rendered in Blender by a separate pipeline that isn't part of this repo (it holds private reference material). To update the splash, replace these four files with a new render's output.
-- First launch ever plays the full sequence; later launches play a ~1.2 s ending (from `freezeAt` minus 0.6 s). Tap or any key skips. No splash on `#/workout` links.
+- First launch ever plays the full sequence; later launches play a ~1.2 s ending (from `outlineAt` minus 0.4 s: outline, hold, wordmark). Tap or any key skips. No splash on `#/workout` links.
 - If the video fails to start within 1.2 s, or with reduced motion, the poster and static wordmark show for 0.8 s.
 - `public/` is copied into `dist/` and the service worker precaches everything in `dist/`, so the splash works offline.

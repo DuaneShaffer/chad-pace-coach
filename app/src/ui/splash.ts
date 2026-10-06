@@ -2,19 +2,22 @@ import { listWorkouts } from "../platform/storage";
 import { DEFAULT_TAGLINE, taglineFor } from "./splashTagline";
 
 interface Markers {
-  thousandAt: number;
-  freezeAt: number;
   echoesStart: number;
+  thousandAt: number;
+  thousandOut: number;
+  freezeAt: number;
+  outlineAt: number;
+  wordmarkAt: number;
   end: number;
 }
 
 const FULL_KEY = "chad.splash.full";
 const SESSION_KEY = "chad.splash.seen";
-const DEFAULT_MARKERS: Markers = { thousandAt: 2.2, freezeAt: 2.6, echoesStart: 2.0, end: 3.2 };
+const DEFAULT_MARKERS: Markers = { echoesStart: 2.0, thousandAt: 2.2, thousandOut: 3.3, freezeAt: 2.6, outlineAt: 3.3, wordmarkAt: 4.1, end: 4.5 };
 const TAGLINE_FROM_S = 0.4;
-const SHORT_LEAD_S = 0.6;
+const SHORT_LEAD_S = 0.4;
 const START_TIMEOUT_MS = 1200;
-const FLIGHT_MS = 450;
+const FLIGHT_MS = 500;
 const FADE_MS = 240;
 const SKIP_FADE_MS = 160;
 const STATIC_HOLD_MS = 800;
@@ -43,7 +46,13 @@ function asset(name: string): string {
 async function loadMarkers(): Promise<Markers> {
   try {
     const res = await fetch(asset("markers.json"));
-    return { ...DEFAULT_MARKERS, ...(await res.json()) };
+    const raw: Partial<Markers> = await res.json();
+    const merged = { ...DEFAULT_MARKERS, ...raw };
+    return {
+      ...merged,
+      thousandOut: raw.thousandOut ?? merged.freezeAt + 0.7,
+      wordmarkAt: raw.wordmarkAt ?? merged.outlineAt + 0.8,
+    };
   } catch {
     return DEFAULT_MARKERS;
   }
@@ -147,11 +156,15 @@ export function startSplash(): void {
     holdTimer = window.setTimeout(() => leave(FADE_MS), STATIC_HOLD_MS);
   };
 
+  const hideThousand = () => {
+    thousand.classList.remove("on");
+    thousand.classList.add("off");
+  };
+
   const matchCut = () => {
     if (matched || leaving) return;
     matched = true;
-    thousand.classList.remove("on");
-    thousand.classList.add("off");
+    hideThousand();
     tag.classList.remove("on");
     const target = homeWordmark();
     if (!target) {
@@ -177,11 +190,12 @@ export function startSplash(): void {
   const update = (t: number) => {
     if (leaving || matched) return;
     if (full) tag.classList.toggle("on", t >= TAGLINE_FROM_S && t < markers.echoesStart);
-    if (!thousandShown && t >= markers.thousandAt) {
+    if (full && !thousandShown && t >= markers.thousandAt && t < markers.thousandOut) {
       thousandShown = true;
       thousand.classList.add("on");
     }
-    if (t >= markers.freezeAt) matchCut();
+    if (thousandShown && t >= markers.thousandOut) hideThousand();
+    if (t >= markers.wordmarkAt) matchCut();
   };
 
   const schedule = () => {
@@ -221,7 +235,7 @@ export function startSplash(): void {
   if (!full) {
     video.addEventListener("loadedmetadata", () => {
       void markersReady.then(() => {
-        video.currentTime = Math.max(0, markers.freezeAt - SHORT_LEAD_S);
+        video.currentTime = Math.max(0, markers.outlineAt - SHORT_LEAD_S);
       });
     }, { once: true });
   }

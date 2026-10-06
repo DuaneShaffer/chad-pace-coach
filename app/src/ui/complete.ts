@@ -23,6 +23,7 @@ export const completeScreen: Screen = (root, [id]) => {
       ...present([h("h1", { class: "title" }, record.actualTimeSec === null ? "CHAD ENDED" : "CHAD COMPLETE"),
       summary.isPR ? h("div", { class: "pr-badge" }, "NEW PR") : null,
       h("div", { class: "big-time mono" }, formatClock(summary.timeSec)),
+      h("a", { class: "memorial-link quiet", href: "#/about" }, "In memory of Navy SEAL Chad Wilkinson"),
       h("div", { class: `delta ${faster ? "ahead" : "behind"}` }, summary.deltaSec === null ? `DNF — goal ${formatClock(summary.targetSec)}` : `${formatDelta(summary.deltaSec)} vs goal ${formatClock(summary.targetSec)}`),
       h(
         "div",

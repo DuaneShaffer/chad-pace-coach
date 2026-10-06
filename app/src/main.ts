@@ -1,4 +1,5 @@
 import "./style.css";
+import { aboutScreen } from "./ui/about";
 import { cameraSetupScreen } from "./ui/cameraSetup";
 import { completeScreen } from "./ui/complete";
 import { historyScreen } from "./ui/history";
@@ -10,7 +11,7 @@ import { workoutScreen } from "./ui/workout";
 
 startRouter(
   document.querySelector<HTMLElement>("#app")!,
-  { home: homeScreen, setup: cameraSetupScreen, workout: workoutScreen, complete: completeScreen, history: historyScreen, settings: settingsScreen },
+  { home: homeScreen, setup: cameraSetupScreen, workout: workoutScreen, complete: completeScreen, history: historyScreen, settings: settingsScreen, about: aboutScreen },
   "home",
 );
 
