@@ -382,3 +382,41 @@ html.lowpower .flash, html.lowpower .overlay-screen { background: #000; }
 html.lowpower *, html.lowpower *::before, html.lowpower *::after { animation: none !important; transition: none !important; filter: none !important; backdrop-filter: none !important; }
 .preview.tucked { position: absolute; top: auto; left: auto; right: 0; bottom: 0; width: 2px; height: 2px; min-height: 0; opacity: 0.01; overflow: hidden; pointer-events: none; z-index: 0; }
 .perf { position: absolute; left: 12px; right: 12px; bottom: calc(var(--safe-b) + 4px); z-index: 6; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+/* touch controls */
+button, [role="button"], .chip, .wheel { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.btn.round.at-limit { opacity: 0.35; }
+button.stepper-value { background: var(--surface); border: 2px solid var(--line); border-radius: 14px; color: var(--text); }
+button.stepper-value:active { background: var(--surface-2); }
+.stepper.target-stepper { width: 100%; gap: 10px; }
+.stepper.target-stepper .stepper-value { flex: 1; min-width: 0; font-size: clamp(48px, 9dvh, 88px); line-height: 1; min-height: clamp(60px, 10dvh, 92px); padding: 0; }
+.home .stepper.target-stepper .btn.round { width: clamp(60px, 10dvh, 92px); min-height: clamp(60px, 10dvh, 92px); font-size: 34px; }
+.home .chips.scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; margin: 0 calc(var(--safe-r) * -1 - 16px) 0 calc(var(--safe-l) * -1 - 16px); padding: 0 calc(var(--safe-r) + 16px) 0 calc(var(--safe-l) + 16px); overscroll-behavior-x: contain; }
+.home .chips.scroll::-webkit-scrollbar { display: none; }
+.home .chips.scroll .chip { flex: 0 0 auto; min-width: 64px; scroll-snap-align: center; }
+.stepper.big { justify-content: center; gap: 22px; padding: 12px 0; }
+.stepper.big .stepper-value { font-size: 64px; min-width: 120px; }
+.stepper.big .btn.round { width: 76px; min-height: 76px; font-size: 36px; }
+.hint.center { text-align: center; }
+.setting-row { min-height: 56px; }
+.setting-row .stepper { gap: 10px; }
+.setting-row .stepper .btn.round { width: 48px; min-height: 48px; font-size: 24px; }
+.setting-row .stepper-value { font-size: 24px; min-width: 64px; }
+
+.sheet-backdrop { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / 0.6); animation: fade-in 0.18s ease-out; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; max-width: 720px; margin: 0 auto; background: var(--surface); border-radius: 22px 22px 0 0; padding: 6px calc(var(--safe-r) + 16px) calc(var(--safe-b) + 16px) calc(var(--safe-l) + 16px); animation: sheet-up 0.22s ease-out; }
+.sheet-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 56px; }
+.sheet-head b { font: 800 16px var(--display); letter-spacing: 0.12em; text-transform: uppercase; }
+.sheet-head .btn { min-height: 48px; padding: 0 8px; text-decoration: none; font-size: 17px; }
+.sheet-head .btn:first-child { justify-self: start; }
+.sheet-head .btn.strong { justify-self: end; color: var(--accent); }
+.wheels { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.wheel-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wheel-col small { color: var(--muted); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.wheel { width: 100%; height: 240px; overflow-y: auto; scroll-snap-type: y mandatory; padding: 96px 0; scrollbar-width: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-item { height: 48px; display: grid; place-items: center; scroll-snap-align: center; scroll-snap-stop: always; font-size: 30px; }
+.wheel-band { position: absolute; left: 0; right: 0; top: calc(24px + 4px + 96px); height: 48px; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); border-radius: 4px; pointer-events: none; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (orientation: landscape) and (max-height: 600px) { .wheel { height: 144px; padding: 48px 0; } .wheel-band { top: calc(24px + 4px + 48px); } }
+@media (orientation: landscape) and (max-height: 600px) { .home .chips.scroll { margin: 0; padding: 0; } }

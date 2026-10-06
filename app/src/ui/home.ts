@@ -1,60 +1,99 @@
 import { TOTAL_REPS, repsPerRevolution } from "../types";
 import type { CountingMode, WorkoutPlan } from "../types";
-import { formatClock, isPlausibleTarget, parseClock } from "../core/format";
+import { formatClock } from "../core/format";
 import { savePlan } from "../platform/settings";
 import { speech } from "../platform/speech";
 import { app } from "./appState";
+import { stepper, openSheet, wheel } from "./controls";
 import { h, svg } from "./dom";
 import { go } from "./router";
 import type { Screen } from "./router";
 
-const TARGET_PRESETS_MIN = [60, 65, 70, 75];
+const TARGET_PRESETS_MIN = [45, 50, 55, 60, 65, 70, 75, 80, 90];
 const SET_SIZE_PRESETS = [10, 25, 50];
+const MIN_TARGET_SEC = 600;
+const MAX_TARGET_SEC = 10800;
+const SECONDS_STEP = 5;
 
 export const homeScreen: Screen = (root) => {
   const plan: WorkoutPlan = { ...app.plan };
   let mode: CountingMode = app.mode;
   let customSet = !SET_SIZE_PRESETS.includes(plan.setSize);
 
-  const timeInput = h("input", { class: "field mono", type: "text", inputMode: "numeric", value: formatClock(plan.targetTimeSec), "aria-label": "Target time, minutes and seconds", autocomplete: "off" });
-  const presetRow = h("div", { class: "chips" });
+  const targetStepper = stepper({
+    value: plan.targetTimeSec,
+    min: MIN_TARGET_SEC,
+    max: MAX_TARGET_SEC,
+    step: 60,
+    fastStep: 300,
+    format: formatClock,
+    label: "target time",
+    className: "target-stepper",
+    onValueTap: openTimeSheet,
+    onChange: refresh,
+  });
+  const presetRow = h("div", { class: "chips scroll", role: "group", "aria-label": "Target presets" });
   const setRow = h("div", { class: "chips" });
-  const customInput = h("input", { class: "field small mono", type: "number", min: 1, max: 1000, value: plan.setSize, "aria-label": "Custom set size" });
-  const stepValue = h("output", { class: "stepper-value mono" });
+  const setsStepper = stepper({ value: plan.setsPerRevolution, min: 1, max: 20, step: 1, label: "sets per revolution", onChange: (v) => ((plan.setsPerRevolution = v), refresh()) });
   const derived = h("div", { class: "derived" });
   const modeRow = h("div", { class: "segmented" });
-  const error = h("p", { class: "error", role: "alert" });
   const continueBtn = h("button", { type: "button", class: "btn primary huge", onClick: onContinue }, "Continue");
 
   const chip = (label: string, active: boolean, onClick: () => void) =>
-    h("button", { class: `chip${active ? " active" : ""}`, type: "button", onClick }, label);
+    h("button", { class: `chip${active ? " active" : ""}`, type: "button", "aria-pressed": String(active), onClick }, label);
 
-  function targetSec(): number | null {
-    const sec = parseClock(timeInput.value);
-    return sec !== null && isPlausibleTarget(sec) ? sec : null;
+  function targetSec(): number {
+    return targetStepper.get();
   }
 
-  function customSetSize(): number | null {
-    const n = Number(customInput.value);
-    return customInput.value.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= TOTAL_REPS ? n : null;
+  function openTimeSheet(): void {
+    const current = targetSec();
+    const minutes = wheel(Array.from({ length: MAX_TARGET_SEC / 60 - MIN_TARGET_SEC / 60 + 1 }, (_, i) => MIN_TARGET_SEC / 60 + i), Math.floor(current / 60), String, "Minutes");
+    const seconds = wheel(Array.from({ length: 60 / SECONDS_STEP }, (_, i) => i * SECONDS_STEP), Math.round((current % 60) / SECONDS_STEP) * SECONDS_STEP, (v) => String(v).padStart(2, "0"), "Seconds");
+    const sheet = openSheet("Target time", () => {
+      const sec = Math.min(MAX_TARGET_SEC, Math.max(MIN_TARGET_SEC, minutes.value() * 60 + seconds.value()));
+      targetStepper.set(sec);
+      refresh();
+    });
+    sheet.body.append(h("div", { class: "wheels" }, h("div", { class: "wheel-col" }, h("small", {}, "min"), minutes.el), h("div", { class: "wheel-col" }, h("small", {}, "sec"), seconds.el), h("div", { class: "wheel-band", "aria-hidden": "true" })));
   }
 
-  function currentError(): string {
-    if (targetSec() === null) return "Enter a target time between 10:00 and 3:00:00.";
-    if (customSet && customSetSize() === null) return "Set size must be a whole number from 1 to 1000.";
-    return "";
+  function openSetSizeSheet(): void {
+    const previous = { size: plan.setSize, custom: customSet };
+    const size = stepper({ value: plan.setSize, min: 1, max: TOTAL_REPS, step: 1, fastStep: 10, label: "set size", className: "big", onChange: () => {} });
+    const sheet = openSheet(
+      "Set size",
+      () => {
+        plan.setSize = size.get();
+        customSet = !SET_SIZE_PRESETS.includes(plan.setSize);
+        refresh();
+      },
+      () => {
+        plan.setSize = previous.size;
+        customSet = previous.custom;
+        refresh();
+      },
+    );
+    sheet.body.append(size.el, h("p", { class: "hint center" }, "Reps per set. Hold + or − to go faster."));
+  }
+
+  function scrollSelectedPreset(): void {
+    const active = presetRow.querySelector<HTMLElement>(".chip.active");
+    if (!active) return;
+    presetRow.scrollLeft = active.offsetLeft - (presetRow.clientWidth - active.offsetWidth) / 2;
   }
 
   function refresh(): void {
     const sec = targetSec();
     presetRow.replaceChildren(
       ...TARGET_PRESETS_MIN.map((m) =>
-        chip(`${m}:00`, sec === m * 60, () => {
-          timeInput.value = `${m}:00`;
+        chip(String(m), sec === m * 60, () => {
+          targetStepper.set(m * 60);
           refresh();
         }),
       ),
     );
+    scrollSelectedPreset();
     setRow.replaceChildren(
       ...SET_SIZE_PRESETS.map((n) =>
         chip(String(n), !customSet && plan.setSize === n, () => {
@@ -63,47 +102,24 @@ export const homeScreen: Screen = (root) => {
           refresh();
         }),
       ),
-      chip("Custom", customSet, () => {
-        customSet = true;
-        customInput.value = String(plan.setSize);
-        refresh();
-        customInput.focus();
-      }),
+      chip(customSet ? String(plan.setSize) : "Custom", customSet, openSetSizeSheet),
     );
-    customInput.hidden = !customSet;
-    stepValue.textContent = String(plan.setsPerRevolution);
+    setsStepper.set(plan.setsPerRevolution);
     const perRev = repsPerRevolution(plan);
-    const revSec = sec !== null ? (sec * perRev) / TOTAL_REPS : null;
+    const revSec = (sec * perRev) / TOTAL_REPS;
     derived.replaceChildren(
       h("span", {}, h("b", { class: "mono" }, perRev), "/rev"),
-      h("span", {}, h("b", { class: "mono" }, revSec !== null ? formatClock(revSec) : "—"), "/rev"),
+      h("span", {}, h("b", { class: "mono" }, formatClock(revSec)), "/rev"),
       h("span", {}, h("b", { class: "mono" }, Math.ceil(TOTAL_REPS / perRev)), " revs"),
     );
-    const message = currentError();
-    error.textContent = message;
-    continueBtn.disabled = message !== "";
     modeRow.replaceChildren(
       h("button", { type: "button", class: mode === "camera" ? "active" : "", onClick: () => ((mode = "camera"), refresh()) }, "Camera"),
       h("button", { type: "button", class: mode === "manual" ? "active" : "", onClick: () => ((mode = "manual"), refresh()) }, "Manual tap"),
     );
   }
 
-  timeInput.addEventListener("input", refresh);
-  customInput.addEventListener("input", () => {
-    const n = customSetSize();
-    if (n !== null) plan.setSize = n;
-    refresh();
-  });
-
-  function stepSets(delta: number): void {
-    plan.setsPerRevolution = Math.min(20, Math.max(1, plan.setsPerRevolution + delta));
-    refresh();
-  }
-
   function onContinue(): void {
-    const sec = targetSec();
-    if (sec === null || currentError()) return refresh();
-    plan.targetTimeSec = sec;
+    plan.targetTimeSec = targetSec();
     app.plan = plan;
     app.mode = mode;
     savePlan({ plan, mode });
@@ -137,8 +153,8 @@ export const homeScreen: Screen = (root) => {
         h(
           "div",
           { class: "home-col" },
-          field("Target finish", timeInput, presetRow),
-          field("Set size", h("div", { class: "inline" }, setRow, customInput)),
+          field("Target finish", targetStepper.el, presetRow),
+          field("Set size", setRow),
         ),
         h(
           "div",
@@ -146,22 +162,10 @@ export const homeScreen: Screen = (root) => {
           h(
             "section",
             { class: "block" },
-            h(
-              "div",
-              { class: "inline spread" },
-              h("label", { class: "label" }, "Sets per revolution"),
-              h(
-                "div",
-                { class: "stepper" },
-                h("button", { type: "button", class: "btn round", "aria-label": "Fewer sets", onClick: () => stepSets(-1) }, "−"),
-                stepValue,
-                h("button", { type: "button", class: "btn round", "aria-label": "More sets", onClick: () => stepSets(1) }, "+"),
-              ),
-            ),
+            h("div", { class: "inline spread" }, h("label", { class: "label" }, "Sets per revolution"), setsStepper.el),
             derived,
           ),
           field("Counting", modeRow),
-          error,
           continueBtn,
         ),
       ),

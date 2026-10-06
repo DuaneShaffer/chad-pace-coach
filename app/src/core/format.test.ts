@@ -39,6 +39,12 @@ describe("parseClock", () => {
     expect(parseClock(" 62:30 ")).toBe(3750);
     expect(parseClock("1:05:00")).toBe(3900);
   });
+  it("parses colon-free digits typed on a numeric keypad", () => {
+    expect(parseClock("5500")).toBe(3300);
+    expect(parseClock("4530")).toBe(2730);
+    expect(parseClock("10500")).toBe(3900);
+    expect(parseClock("5560")).toBeNull();
+  });
   it("rejects invalid input", () => {
     for (const bad of ["", "abc", "65:60", "-5", "1:2:3:4", "0", "0:00", "6.5", "65:", "1:5", "1:05:5", "1:5:00"]) {
       expect(parseClock(bad)).toBeNull();

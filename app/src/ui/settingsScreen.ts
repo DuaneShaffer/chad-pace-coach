@@ -3,6 +3,8 @@ import type { AudioMode, Settings } from "../types";
 import { getSettings, saveSettings, savePlan } from "../platform/settings";
 import { app } from "./appState";
 import { speech } from "../platform/speech";
+import { stepper } from "./controls";
+import type { Stepper } from "./controls";
 import { h } from "./dom";
 import { go } from "./router";
 import type { Screen } from "./router";
@@ -14,15 +16,17 @@ const AUDIO_MODES: { id: AudioMode; label: string; hint: string }[] = [
   { id: "full", label: "Full coach", hint: "Milestones plus pace feedback." },
 ];
 
+const sec = (v: number) => `${v}s`;
+
 type NumericKey = Exclude<keyof Settings, "audioMode">;
 
-const NUMERIC: { key: NumericKey; label: string; unit: string; min: number; max: number; step: number }[] = [
-  { key: "paceQuietThresholdSec", label: "Stay quiet under", unit: "sec", min: 0, max: 120, step: 1 },
-  { key: "paceOccasionalThresholdSec", label: "Occasional status from", unit: "sec", min: 0, max: 120, step: 1 },
-  { key: "paceProminentThresholdSec", label: "Prominent feedback from", unit: "sec", min: 0, max: 300, step: 1 },
-  { key: "paceCorrectionThresholdSec", label: "Explicit correction from", unit: "sec", min: 0, max: 600, step: 1 },
-  { key: "repConfidenceThreshold", label: "Rep confidence threshold", unit: "0–1", min: 0.3, max: 0.99, step: 0.01 },
-  { key: "rollingWindowSec", label: "Rolling pace window", unit: "sec", min: 30, max: 900, step: 30 },
+const NUMERIC: { key: NumericKey; label: string; format: (v: number) => string; min: number; max: number; step: number }[] = [
+  { key: "paceQuietThresholdSec", label: "Stay quiet under", format: sec, min: 0, max: 120, step: 5 },
+  { key: "paceOccasionalThresholdSec", label: "Occasional status from", format: sec, min: 0, max: 120, step: 5 },
+  { key: "paceProminentThresholdSec", label: "Prominent feedback from", format: sec, min: 0, max: 300, step: 5 },
+  { key: "paceCorrectionThresholdSec", label: "Explicit correction from", format: sec, min: 0, max: 600, step: 5 },
+  { key: "repConfidenceThreshold", label: "Rep confidence threshold", format: (v) => v.toFixed(2), min: 0.3, max: 0.99, step: 0.05 },
+  { key: "rollingWindowSec", label: "Rolling pace window", format: sec, min: 30, max: 900, step: 30 },
 ];
 
 const THRESHOLD_ORDER: NumericKey[] = ["paceQuietThresholdSec", "paceOccasionalThresholdSec", "paceProminentThresholdSec", "paceCorrectionThresholdSec"];
@@ -31,7 +35,7 @@ export const settingsScreen: Screen = (root) => {
   const settings: Settings = { ...getSettings() };
   const modeRow = h("div", { class: "segmented four" });
   const modeHint = h("p", { class: "hint" });
-  const inputs = new Map<NumericKey, HTMLInputElement>();
+  const steppers = new Map<NumericKey, Stepper>();
 
   function persist(): void {
     saveSettings({ ...settings });
@@ -47,7 +51,7 @@ export const settingsScreen: Screen = (root) => {
   }
 
   function syncInputs(): void {
-    for (const [key, input] of inputs) input.value = String(settings[key]);
+    for (const [key, control] of steppers) control.set(settings[key]);
   }
 
   function enforceOrder(changed: NumericKey): void {
@@ -58,28 +62,35 @@ export const settingsScreen: Screen = (root) => {
   }
 
   const numericRows = NUMERIC.map((n) => {
-    const input = h("input", { class: "field small mono", type: "number", min: n.min, max: n.max, step: n.step, value: settings[n.key] });
-    input.addEventListener("change", () => {
-      const v = Number(input.value);
-      if (input.value.trim() !== "" && Number.isFinite(v)) {
-        settings[n.key] = Math.min(n.max, Math.max(n.min, v));
+    const control = stepper({
+      value: settings[n.key],
+      min: n.min,
+      max: n.max,
+      step: n.step,
+      format: n.format,
+      label: n.label,
+      onChange: (v) => {
+        settings[n.key] = v;
         enforceOrder(n.key);
         persist();
-      }
-      syncInputs();
+        syncInputs();
+      },
     });
-    inputs.set(n.key, input);
-    return h("label", { class: "setting-row" }, h("span", {}, n.label, h("small", {}, ` ${n.unit}`)), input);
+    steppers.set(n.key, control);
+    return h("div", { class: "setting-row" }, h("span", {}, n.label), control.el);
   });
 
-  const boxInput = h("input", { class: "field small mono", type: "number", min: 1, max: 60, step: 0.5, value: app.plan.boxHeightIn });
-  boxInput.addEventListener("change", () => {
-    const v = Number(boxInput.value);
-    if (boxInput.value.trim() !== "" && Number.isFinite(v)) {
-      app.plan = { ...app.plan, boxHeightIn: Math.min(60, Math.max(1, v)) };
+  const boxControl = stepper({
+    value: app.plan.boxHeightIn,
+    min: 1,
+    max: 60,
+    step: 1,
+    format: (v) => `${v}"`,
+    label: "box height",
+    onChange: (v) => {
+      app.plan = { ...app.plan, boxHeightIn: v };
       savePlan({ plan: app.plan, mode: app.mode });
-    }
-    boxInput.value = String(app.plan.boxHeightIn);
+    },
   });
 
   function testVoice(): void {
@@ -101,7 +112,7 @@ export const settingsScreen: Screen = (root) => {
       { class: "screen settings" },
       h("header", { class: "topbar" }, h("button", { type: "button", class: "btn round", "aria-label": "Back", onClick: () => go("home") }, "‹"), h("h2", {}, "Settings")),
       h("section", { class: "block" }, h("label", { class: "label" }, "Audio"), modeRow, modeHint, h("button", { type: "button", class: "btn", onClick: testVoice }, "Test voice")),
-      h("section", { class: "block" }, h("label", { class: "label" }, "Box"), h("label", { class: "setting-row" }, h("span", {}, "Box height", h("small", {}, " inches")), boxInput)),
+      h("section", { class: "block" }, h("label", { class: "label" }, "Box"), h("div", { class: "setting-row" }, h("span", {}, "Box height"), boxControl.el)),
       h("section", { class: "block" }, h("label", { class: "label" }, "Pace and counting"), ...numericRows),
       h("button", { type: "button", class: "btn", onClick: reset }, "Reset to defaults"),
     ),

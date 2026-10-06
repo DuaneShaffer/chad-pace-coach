@@ -18,13 +18,22 @@ export function formatDelta(sec: number): string {
 }
 
 export function parseClock(text: string): number | null {
-  const parts = text.trim().split(":");
+  const trimmed = text.trim();
+  const digitsOnly = /^\d{3,6}$/.exec(trimmed);
+  const parts = digitsOnly ? splitClockDigits(trimmed) : trimmed.split(":");
   if (parts.length > 3) return null;
   if (!parts.every((p, i) => (i === 0 ? /^\d{1,3}$/.test(p) : /^\d{2}$/.test(p)))) return null;
   const nums = parts.map(Number);
   if (nums.slice(1).some((n) => n > 59)) return null;
   const sec = nums.length === 1 ? nums[0] * 60 : nums.reduce((acc, n) => acc * 60 + n, 0);
   return sec > 0 ? sec : null;
+}
+
+// Numeric phone keypads have no ":" key, so "5500" means 55:00 and "10500" means 1:05:00.
+function splitClockDigits(digits: string): string[] {
+  const seconds = digits.slice(-2);
+  const rest = digits.slice(0, -2);
+  return rest.length > 2 ? [rest.slice(0, -2), rest.slice(-2), seconds] : [rest, seconds];
 }
 
 export function isPlausibleTarget(sec: number): boolean {
