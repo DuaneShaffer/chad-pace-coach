@@ -14,12 +14,12 @@ interface Markers {
 const SESSION_KEY = "chad.splash.seen";
 const DEFAULT_MARKERS: Markers = { echoesStart: 2.0, thousandAt: 2.2, thousandOut: 3.3, freezeAt: 2.6, outlineAt: 3.3, wordmarkAt: 4.1, end: 4.5 };
 const TAGLINE_FROM_S = 0.4;
-const SHORT_LEAD_S = 0.4;
 const START_TIMEOUT_MS = 1200;
 const FLIGHT_MS = 500;
 const FADE_MS = 240;
 const SKIP_FADE_MS = 160;
 const STATIC_HOLD_MS = 800;
+const SHORT_HOLD_MS = 1500;
 
 // sessionStorage survives a refresh but not closing the tab or app, so a fresh launch gets the full intro
 // and a refresh within the same session gets the short one.
@@ -52,14 +52,17 @@ async function loadMarkers(): Promise<Markers> {
   }
 }
 
-function buildOverlay() {
+function buildOverlay(full: boolean) {
   const root = document.createElement("div");
   root.className = "splash";
   root.setAttribute("aria-hidden", "true");
+  const sources = full
+    ? `<source src="${asset("splash.mp4")}" type="video/mp4">
+      <source src="${asset("splash.webm")}" type="video/webm">`
+    : "";
   root.innerHTML = `
-    <video class="splash-video" muted playsinline preload="auto" poster="${asset("poster.jpg")}">
-      <source src="${asset("splash.mp4")}" type="video/mp4">
-      <source src="${asset("splash.webm")}" type="video/webm">
+    <video class="splash-video" muted playsinline preload="${full ? "auto" : "none"}" poster="${asset(full ? "poster.jpg" : "outline.jpg")}">
+      ${sources}
     </video>
     <div class="splash-thousand"><div class="splash-num">1,000</div><div class="splash-sub">Step-ups</div></div>
     <div class="splash-tag">${DEFAULT_TAGLINE}</div>
@@ -104,10 +107,10 @@ export function playSplash(opts: { full: boolean }): void {
 
 function runSplash(full: boolean): void {
   if (document.querySelector(".splash")) return;
-  const { root, video, thousand, tag, word } = buildOverlay();
+  const { root, video, thousand, tag, word } = buildOverlay(full);
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let markers = DEFAULT_MARKERS;
-  const markersReady = loadMarkers().then((m) => (markers = m));
+  void loadMarkers().then((m) => (markers = m));
   let leaving = false;
   let matched = false;
   let thousandShown = false;
@@ -145,7 +148,7 @@ function runSplash(full: boolean): void {
   window.addEventListener("pointerdown", skip, true);
   window.addEventListener("keydown", skip, true);
 
-  const showStatic = () => {
+  const showStatic = (holdMs = STATIC_HOLD_MS) => {
     if (leaving || matched) return;
     matched = true;
     video.pause();
@@ -155,7 +158,7 @@ function runSplash(full: boolean): void {
     if (target) styleWordLike(word, target);
     else word.classList.add("centered");
     root.classList.add("static");
-    holdTimer = window.setTimeout(() => leave(FADE_MS), STATIC_HOLD_MS);
+    holdTimer = window.setTimeout(() => leave(FADE_MS), holdMs);
   };
 
   const hideThousand = () => {
@@ -215,8 +218,8 @@ function runSplash(full: boolean): void {
     }
   };
 
-  if (reduced) {
-    showStatic();
+  if (reduced || !full) {
+    showStatic(full ? STATIC_HOLD_MS : SHORT_HOLD_MS);
     return;
   }
 
@@ -226,20 +229,13 @@ function runSplash(full: boolean): void {
     })
     .catch(() => {});
 
-  startTimer = window.setTimeout(showStatic, START_TIMEOUT_MS);
-  video.addEventListener("error", showStatic);
+  startTimer = window.setTimeout(() => showStatic(), START_TIMEOUT_MS);
+  video.addEventListener("error", () => showStatic());
   video.addEventListener("ended", matchCut);
   video.addEventListener("playing", () => {
     clearTimeout(startTimer);
     root.classList.add("playing");
     schedule();
   }, { once: true });
-  if (!full) {
-    video.addEventListener("loadedmetadata", () => {
-      void markersReady.then(() => {
-        video.currentTime = Math.max(0, markers.outlineAt - SHORT_LEAD_S);
-      });
-    }, { once: true });
-  }
-  video.play().catch(showStatic);
+  video.play().catch(() => showStatic());
 }
