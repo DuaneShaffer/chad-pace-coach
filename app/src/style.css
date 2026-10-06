@@ -439,3 +439,14 @@ button.stepper-value:active { background: var(--surface-2); }
 .about .block { gap: 10px; }
 .footnote { color: var(--muted); font-size: 13px; line-height: 1.5; padding-bottom: 8px; }
 @media (orientation: landscape) and (max-height: 600px) { .home-head > div { flex-direction: row; align-items: baseline; gap: 10px; flex-wrap: wrap; } .memorial-link { margin: -16px 0; padding: 16px 0; } }
+
+/* record score */
+.record-score { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: stretch; text-align: left; }
+.record-link { display: flex; align-items: center; min-height: 64px; padding: 0 18px; border-radius: 14px; border: 2px solid var(--accent); color: var(--text); text-decoration: none; background: rgb(212 255 58 / 0.08); touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.record-link span { display: flex; flex-direction: column; gap: 2px; }
+.record-link b { color: var(--accent); font-size: 18px; font-weight: 800; }
+.record-link small { color: var(--muted); font-size: 13px; }
+.copy-btn { min-height: 64px; padding: 0 16px; }
+.offscreen { position: fixed; left: -9999px; top: 0; font-size: 16px; }
+.complete { gap: clamp(8px, 1.6dvh, 18px); }
+.complete .kv { padding: clamp(6px, 1.2dvh, 12px) 4px; }

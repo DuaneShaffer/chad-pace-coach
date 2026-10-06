@@ -101,7 +101,15 @@ function styleWordLike(word: HTMLElement, target: HTMLElement): DOMRect {
 export function startSplash(): void {
   const { show, full } = claimLaunch();
   if (!show || location.hash.startsWith("#/workout")) return;
+  runSplash(full);
+}
 
+export function playSplash(opts: { full: boolean }): void {
+  runSplash(opts.full);
+}
+
+function runSplash(full: boolean): void {
+  if (document.querySelector(".splash")) return;
   const { root, video, thousand, tag, word } = buildOverlay();
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let markers = DEFAULT_MARKERS;

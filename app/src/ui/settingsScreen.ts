@@ -6,6 +6,7 @@ import { speech } from "../platform/speech";
 import { stepper } from "./controls";
 import type { Stepper } from "./controls";
 import { h } from "./dom";
+import { playSplash } from "./splash";
 import { go } from "./router";
 import type { Screen } from "./router";
 
@@ -93,6 +94,11 @@ export const settingsScreen: Screen = (root) => {
     },
   });
 
+  function replayIntro(): void {
+    go("home");
+    window.setTimeout(() => playSplash({ full: true }), 60);
+  }
+
   function testVoice(): void {
     speech.unlock();
     speech.setMuted(false);
@@ -114,6 +120,7 @@ export const settingsScreen: Screen = (root) => {
       h("section", { class: "block" }, h("label", { class: "label" }, "Audio"), modeRow, modeHint, h("button", { type: "button", class: "btn", onClick: testVoice }, "Test voice")),
       h("section", { class: "block" }, h("label", { class: "label" }, "Box"), h("div", { class: "setting-row" }, h("span", {}, "Box height"), boxControl.el)),
       h("section", { class: "block" }, h("label", { class: "label" }, "Pace and counting"), ...numericRows),
+      h("section", { class: "block" }, h("label", { class: "label" }, "Intro"), h("button", { type: "button", class: "btn", onClick: replayIntro }, "Replay intro")),
       h("button", { type: "button", class: "btn", onClick: reset }, "Reset to defaults"),
     ),
   );

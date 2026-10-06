@@ -6,6 +6,7 @@ import { deleteWorkout, exportWorkoutsJson, listWorkouts } from "../platform/sto
 import { getSettings } from "../platform/settings";
 import { paceGraph, projectionGraph } from "./charts";
 import { h, present } from "./dom";
+import { recordScoreBlock } from "./recordScore";
 import { go } from "./router";
 import type { Screen } from "./router";
 
@@ -96,6 +97,7 @@ function detailView(record: WorkoutRecord, all: WorkoutRecord[]): Node[] {
       kv("Structure", `${record.plan.setSize} × ${record.plan.setsPerRevolution}`),
       kv("Counting", record.countingMode === "camera" ? "Camera" : "Manual"),
     ),
+    recordScoreBlock(record),
     h("h3", {}, "Pace graph"),
     paceGraph(record),
     projection ? h("h3", {}, "Projected finish") : null,

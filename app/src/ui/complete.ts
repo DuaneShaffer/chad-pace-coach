@@ -2,6 +2,7 @@ import { formatClock, formatDelta } from "../core/format";
 import { summarize } from "../core/stats";
 import { getWorkout, listWorkouts } from "../platform/storage";
 import { h, present } from "./dom";
+import { recordScoreBlock } from "./recordScore";
 import { go } from "./router";
 import type { Screen } from "./router";
 
@@ -34,6 +35,7 @@ export const completeScreen: Screen = (root, [id]) => {
         row("Fastest revolution", summary.fastestRevSec !== null ? formatClock(summary.fastestRevSec) : "—"),
         row("Slowest revolution", summary.slowestRevSec !== null ? formatClock(summary.slowestRevSec) : "—"),
       ),
+      recordScoreBlock(record),
       h("p", { class: "saved" }, "Result saved"),
       h("button", { type: "button", class: "btn primary huge", onClick: () => go("home") }, "Done"),
       h("button", { type: "button", class: "btn", onClick: () => go(`history/${record.id}`) }, "View details"),
