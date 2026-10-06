@@ -270,12 +270,12 @@ describe("evaluateSetup", () => {
   it("flags feet cut off at the bottom", () => {
     const checks = evaluateSetup(frames({ ...STANDING, scale: 1.2 }));
     expect(ok(checks, "feet")?.ok).toBe(false);
-    expect(ok(checks, "feet")?.hint).toBe("Your feet are outside the frame");
+    expect(ok(checks, "feet")?.hint).toBe("Tip: get your feet in frame for best accuracy");
   });
 
   it("flags a body too large for the frame", () => {
     const checks = evaluateSetup(frames({ ...STANDING, scale: 1.6 }));
-    expect(ok(checks, "fullBody")).toMatchObject({ ok: false, hint: "Move the camera back" });
+    expect(ok(checks, "fullBody")).toMatchObject({ ok: false, hint: "Tip: move the camera back to fit your whole body" });
   });
 
   it("flags low light", () => {

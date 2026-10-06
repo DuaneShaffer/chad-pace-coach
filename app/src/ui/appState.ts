@@ -12,8 +12,9 @@ export interface CameraSession {
 
 const saved = loadSavedPlan();
 
-export const app: { plan: WorkoutPlan; mode: CountingMode; camera: CameraSession | null } = {
+export const app: { plan: WorkoutPlan; mode: CountingMode; camera: CameraSession | null; autoStart: boolean } = {
   plan: saved.plan,
   mode: saved.mode,
   camera: null,
+  autoStart: false,
 };

@@ -18,6 +18,7 @@ const AUDIO_MODES: { id: AudioMode; label: string; hint: string }[] = [
 ];
 
 const sec = (v: number) => `${v}s`;
+const COUNTDOWN_CHOICES = [3, 5, 10, 15];
 
 type NumericKey = Exclude<keyof Settings, "audioMode">;
 
@@ -36,6 +37,7 @@ export const settingsScreen: Screen = (root) => {
   const settings: Settings = { ...getSettings() };
   const modeRow = h("div", { class: "segmented four" });
   const modeHint = h("p", { class: "hint" });
+  const countdownRow = h("div", { class: "segmented four" });
   const steppers = new Map<NumericKey, Stepper>();
 
   function persist(): void {
@@ -49,6 +51,14 @@ export const settingsScreen: Screen = (root) => {
       ),
     );
     modeHint.textContent = AUDIO_MODES.find((m) => m.id === settings.audioMode)?.hint ?? "";
+  }
+
+  function renderCountdown(): void {
+    countdownRow.replaceChildren(
+      ...COUNTDOWN_CHOICES.map((n) =>
+        h("button", { type: "button", class: settings.countdownSec === n ? "active" : "", "aria-pressed": String(settings.countdownSec === n), onClick: () => ((settings.countdownSec = n), persist(), renderCountdown()) }, `${n} s`),
+      ),
+    );
   }
 
   function syncInputs(): void {
@@ -109,6 +119,7 @@ export const settingsScreen: Screen = (root) => {
     Object.assign(settings, DEFAULT_SETTINGS);
     persist();
     renderMode();
+    renderCountdown();
     syncInputs();
   }
 
@@ -118,6 +129,7 @@ export const settingsScreen: Screen = (root) => {
       { class: "screen settings" },
       h("header", { class: "topbar" }, h("button", { type: "button", class: "btn round", "aria-label": "Back", onClick: () => go("home") }, "‹"), h("h2", {}, "Settings")),
       h("section", { class: "block" }, h("label", { class: "label" }, "Audio"), modeRow, modeHint, h("button", { type: "button", class: "btn", onClick: testVoice }, "Test voice")),
+      h("section", { class: "block" }, h("label", { class: "label" }, "Start countdown"), countdownRow, h("p", { class: "hint" }, "Time from tapping START to GO. The workout clock starts at GO.")),
       h("section", { class: "block" }, h("label", { class: "label" }, "Box"), h("div", { class: "setting-row" }, h("span", {}, "Box height"), boxControl.el)),
       h("section", { class: "block" }, h("label", { class: "label" }, "Pace and counting"), ...numericRows),
       h("section", { class: "block" }, h("label", { class: "label" }, "Intro"), h("button", { type: "button", class: "btn", onClick: replayIntro }, "Replay intro")),
@@ -125,4 +137,5 @@ export const settingsScreen: Screen = (root) => {
     ),
   );
   renderMode();
+  renderCountdown();
 };

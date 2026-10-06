@@ -251,29 +251,67 @@ export const workoutScreen: Screen = (root) => {
   function showReady(): void {
     overlay.hidden = false;
     overlay.replaceChildren(
-      h("div", { class: "ready" }, h("h2", {}, "Ready"), h("p", {}, `Target ${formatClock(plan.targetTimeSec)}  ·  ${plan.setSize} × ${plan.setsPerRevolution}`), h("button", { type: "button", class: "btn primary huge", onClick: () => void begin() }, "START"), makeMuteButton(), h("button", { type: "button", class: "btn link", onClick: () => go("home") }, "Cancel")),
+      h(
+        "div",
+        { class: "ready" },
+        h("h2", {}, "Ready"),
+        h("p", {}, `Target ${formatClock(plan.targetTimeSec)}  ·  ${plan.setSize} × ${plan.setsPerRevolution}`),
+        h("button", { type: "button", class: "btn primary huge", onClick: () => void begin() }, `START · ${settings.countdownSec} s countdown`),
+        h("p", { class: "start-note" }, "Clock starts at GO — sync with your gym clock"),
+        makeMuteButton(),
+        h("button", { type: "button", class: "btn link", onClick: () => go("home") }, "Cancel"),
+      ),
     );
+    syncMute();
   }
 
+  const countdownNumber = h("div", { class: "countdown mono" });
+  let countdownToken = 0;
+
   function showCountdown(text: string): void {
-    overlay.replaceChildren(h("div", { class: "countdown mono" }, text));
+    countdownNumber.textContent = text;
+    countdownNumber.classList.toggle("go", text === "GO");
+  }
+
+  function cancelCountdown(): void {
+    if (phase !== "countdown") return;
+    countdownToken += 1;
+    phase = "ready";
+    cam?.engine.stop();
+    showReady();
   }
 
   async function begin(): Promise<void> {
     if (phase !== "ready") return;
     phase = "countdown";
+    const token = ++countdownToken;
     speech.unlock();
     startVision();
-    if (settings.audioMode !== "off") speech.sayNow("3");
-    showCountdown("3");
-    for (const n of ["2", "1"]) {
-      await sleep(1000);
-      if (disposed) return;
-      if (settings.audioMode !== "off") speech.sayNow(n);
-      showCountdown(n);
+    const total = settings.countdownSec;
+    const speaks = settings.audioMode !== "off";
+    overlay.hidden = false;
+    overlay.replaceChildren(
+      h(
+        "div",
+        { class: "countdown-wrap" },
+        h("div", { class: "lead-in" }, "Get in position"),
+        countdownNumber,
+        h("button", { type: "button", class: "btn link", onClick: cancelCountdown }, "Cancel"),
+      ),
+    );
+    const startedAt = performance.now();
+    const waitUntil = async (ms: number): Promise<boolean> => {
+      await sleep(Math.max(0, startedAt + ms - performance.now()));
+      return !disposed && token === countdownToken;
+    };
+    if (speaks && total >= 10) speech.sayNow("Get in position");
+    for (let n = total; n >= 1; n--) {
+      if (!(await waitUntil((total - n) * 1000))) return;
+      showCountdown(String(n));
+      const leadInSpoken = total >= 10 && n === total;
+      if (speaks && !leadInSpoken && (n <= 5 || n % 5 === 0)) speech.sayNow(String(n));
     }
-    await sleep(1000);
-    if (disposed) return;
+    if (!(await waitUntil(total * 1000))) return;
     showCountdown("GO");
     session.start();
     phase = "running";
@@ -579,7 +617,12 @@ export const workoutScreen: Screen = (root) => {
   }
 
   applyLowPower();
-  showReady();
+  if (cameraMode && app.autoStart) {
+    app.autoStart = false;
+    void begin();
+  } else {
+    showReady();
+  }
   syncMute();
   render();
   uiTimer = window.setInterval(tick, UI_INTERVAL_MS);

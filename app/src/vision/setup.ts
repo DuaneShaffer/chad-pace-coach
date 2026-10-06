@@ -5,6 +5,8 @@ const BODY_POINTS = [
   LM.nose, LM.lShoulder, LM.rShoulder, LM.lHip, LM.rHip,
   LM.lKnee, LM.rKnee, LM.lAnkle, LM.rAnkle,
 ];
+const TORSO_POINTS = [LM.lShoulder, LM.rShoulder, LM.lHip, LM.rHip];
+const TORSO_VISIBILITY = 0.5;
 const FOOT_POINTS = [LM.lAnkle, LM.rAnkle, LM.lHeel, LM.rHeel, LM.lFoot, LM.rFoot];
 const BODY_VISIBILITY = 0.6;
 const FOOT_VISIBILITY = 0.5;
@@ -28,7 +30,8 @@ export function evaluateSetup(recent: PoseFrame[]): SetupCheck[] {
   const frames = recent.slice(-WINDOW);
   const withPose = frames.filter((f) => f.landmarks && f.landmarks.length >= 33);
   const poses = withPose.map((f) => f.landmarks as Landmark[]);
-  const person = frames.length > 0 && withPose.length / frames.length >= PERSON_RATIO;
+  const present = frames.length > 0 && withPose.length / frames.length >= PERSON_RATIO;
+  const person = present && allVisible(poses, TORSO_POINTS, TORSO_VISIBILITY);
   const fullBody = person && allVisible(poses, BODY_POINTS, BODY_VISIBILITY);
   const feet = person && allVisible(poses, FOOT_POINTS, FOOT_VISIBILITY);
 
@@ -42,13 +45,13 @@ export function evaluateSetup(recent: PoseFrame[]): SetupCheck[] {
       id: "fullBody",
       ok: fullBody,
       label: "Full body in view",
-      hint: person && !fullBody ? "Move the camera back" : undefined,
+      hint: person && !fullBody ? "Tip: move the camera back to fit your whole body" : undefined,
     },
     {
       id: "feet",
       ok: feet,
       label: "Feet visible",
-      hint: person && !feet ? "Your feet are outside the frame" : undefined,
+      hint: person && !feet ? "Tip: get your feet in frame for best accuracy" : undefined,
     },
     { id: "light", ok: light, label: "Good lighting", hint: light ? undefined : "More light is needed" },
   ];

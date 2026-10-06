@@ -59,6 +59,8 @@ export interface Settings {
   /** minimum confidence for a camera rep to count */
   repConfidenceThreshold: number;
   rollingWindowSec: number;
+  /** seconds from tapping START to GO */
+  countdownSec: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   paceCorrectionThresholdSec: 60,
   repConfidenceThreshold: 0.8,
   rollingWindowSec: 180,
+  countdownSec: 5,
 };
 
 export interface PaceSnapshot {

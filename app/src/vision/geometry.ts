@@ -20,6 +20,7 @@ const MIN_SHOULDER_VISIBILITY = 0.4;
 const MIN_HIP_VISIBILITY = 0.35;
 const MIN_BEST_ANKLE_VISIBILITY = 0.5;
 const MIN_WEAK_ANKLE_VISIBILITY = 0.3;
+const ANKLE_FRAME_LIMIT = 1.02;
 
 export interface BodyMeasure {
   t: number;
@@ -44,6 +45,7 @@ export function measureBody(frame: PoseFrame): BodyMeasure | null {
   const bestAnkle = Math.max(vis(LM.lAnkle), vis(LM.rAnkle));
   const weakAnkle = Math.min(vis(LM.lAnkle), vis(LM.rAnkle));
   if (bestAnkle < MIN_BEST_ANKLE_VISIBILITY || weakAnkle < MIN_WEAK_ANKLE_VISIBILITY) return null;
+  if (Math.max(lm[LM.lAnkle].y, lm[LM.rAnkle].y) > ANKLE_FRAME_LIMIT) return null;
   const shoulders = mid(lm[LM.lShoulder], lm[LM.rShoulder]);
   const hips = mid(lm[LM.lHip], lm[LM.rHip]);
   const torso = Math.hypot(shoulders.x - hips.x, shoulders.y - hips.y);
@@ -60,6 +62,30 @@ export function measureBody(frame: PoseFrame): BodyMeasure | null {
     rAnkleY: lm[LM.rAnkle].y,
     visibility,
   };
+}
+
+export interface TorsoMeasure {
+  t: number;
+  torso: number;
+  hipX: number;
+  hipY: number;
+  visibility: number;
+  ankles: boolean;
+}
+
+export function measureTorso(frame: PoseFrame): TorsoMeasure | null {
+  const lm = frame.landmarks;
+  if (!lm || lm.length < 33) return null;
+  const vis = (i: number) => lm[i].visibility;
+  if (Math.min(vis(LM.lShoulder), vis(LM.rShoulder)) < MIN_SHOULDER_VISIBILITY) return null;
+  if (Math.min(vis(LM.lHip), vis(LM.rHip)) < MIN_HIP_VISIBILITY) return null;
+  const shoulders = mid(lm[LM.lShoulder], lm[LM.rShoulder]);
+  const hips = mid(lm[LM.lHip], lm[LM.rHip]);
+  const torso = Math.hypot(shoulders.x - hips.x, shoulders.y - hips.y);
+  if (torso < 0.02) return null;
+  const visibility =
+    (vis(LM.lShoulder) + vis(LM.rShoulder) + vis(LM.lHip) + vis(LM.rHip)) / 4;
+  return { t: frame.t, torso, hipX: hips.x, hipY: hips.y, visibility, ankles: measureBody(frame) !== null };
 }
 
 export function median(values: number[]): number {

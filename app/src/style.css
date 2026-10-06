@@ -156,6 +156,8 @@ progress::-moz-progress-bar { background: var(--accent); }
 .delta.behind, .behind { color: var(--bad); }
 .diag { min-height: 1.3em; font: 700 min(3.4vw, 2.6vh) var(--display); letter-spacing: 0.06em; color: var(--muted); }
 .checks .optional { color: var(--muted); }
+.checks .tip { color: #ffb020; }
+.start-note { margin: -4px 0 0; text-align: center; color: var(--muted); font-size: 13px; letter-spacing: 0.03em; }
 .need { font: 800 min(5.5vw, 3.8vh) var(--display); letter-spacing: 0.08em; color: var(--bad); min-height: 1.2em; }
 .w-side { display: flex; flex-direction: column; gap: 12px; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -205,11 +207,16 @@ progress::-moz-progress-bar { background: var(--accent); }
   .setup .status, .setup .error-box { grid-column: 1 / -1; }
 }
 
-.overlay-screen { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: rgb(10 11 10 / 0.9); }
+.overlay-screen { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgb(10 11 10 / 0.9); }
 .overlay-screen[hidden] { display: none; }
 .ready { display: flex; flex-direction: column; gap: 16px; align-items: stretch; text-align: center; width: min(420px, 86vw); }
+.ready .btn.huge { font-size: clamp(18px, 5vw, 24px); letter-spacing: 0.04em; }
+@media (orientation: landscape) and (max-height: 600px) { .ready { gap: 8px; } .ready h2 { font-size: 30px; } .ready .btn.huge { min-height: 60px; } }
 .ready h2 { font: 900 44px var(--display); letter-spacing: 0.1em; text-transform: uppercase; }
 .ready p { color: var(--muted); }
+.countdown-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.lead-in { font: 800 clamp(18px, 4vh, 28px) var(--display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.countdown.go { color: var(--good); }
 .countdown { font-size: 40vmin; color: var(--accent); animation: bump 0.4s ease-out; }
 .flash { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgb(10 11 10 / 0.94); animation: fade-in 0.2s ease-out; }
 .flash-title { font: 900 min(9vw, 7vh) var(--display); letter-spacing: 0.2em; color: var(--muted); }

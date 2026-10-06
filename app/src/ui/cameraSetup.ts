@@ -9,6 +9,7 @@ import { app } from "./appState";
 import type { CameraSession } from "./appState";
 import { cameraErrorMessage, closeCamera, openCameraFacing } from "./camera";
 import { h } from "./dom";
+import { openLatch, showStartAnyway, startEnabled, updateLatch } from "./startLatch";
 import { go } from "./router";
 import type { Screen } from "./router";
 
@@ -30,6 +31,7 @@ export const cameraSetupScreen: Screen = (root) => {
   let pending = { text: "", since: 0 };
   let announcedReady = false;
   let checkTimer = 0;
+  let latch = openLatch(performance.now());
 
   const video = h("video", { playsInline: true, muted: true });
   video.muted = true;
@@ -40,12 +42,15 @@ export const cameraSetupScreen: Screen = (root) => {
   const instruction = h("div", { class: "instruction", "aria-live": "polite" });
   const progress = h("progress", { max: 1, value: 0 });
   const checklist = h("ul", { class: "checks" });
-  const startBtn = h("button", { type: "button", class: "btn primary huge", disabled: true, onClick: onStart }, "Ready");
+  const countdownSec = getSettings().countdownSec;
+  const startBtn = h("button", { type: "button", class: "btn primary huge", disabled: true, onClick: onStart }, `START · ${countdownSec} s countdown`);
+  const startNote = h("p", { class: "start-note" }, "Clock starts at GO — sync with your gym clock");
+  const startAnywayBtn = h("button", { type: "button", class: "btn small", hidden: true, onClick: onStart }, "Start anyway");
   const flipBtn = h("button", { type: "button", class: "btn round", "aria-label": "Switch camera", disabled: true, onClick: flip }, "⟲");
   const manualBtn = h("button", { type: "button", class: "btn link", onClick: useManual }, "Use manual counting instead");
   const errorBox = h("div", { class: "error-box", hidden: true });
 
-  const panel = h("div", { class: "panel" }, instruction, progress, checklist, startBtn, manualBtn);
+  const panel = h("div", { class: "panel" }, instruction, progress, checklist, startBtn, startNote, startAnywayBtn, manualBtn);
   root.append(
     h(
       "main",
@@ -106,28 +111,34 @@ export const cameraSetupScreen: Screen = (root) => {
     const checks = checksWithBox();
     const calibration = calibrator.step === "done" ? calibrator.result() : null;
     if (app.camera) app.camera.calibration = calibration;
-    const required = checks.filter((c) => c.id !== "box");
+    const required = checks.filter((c) => c.id === "person" || c.id === "light");
     const ready = required.every((c) => c.ok);
     const blocker = required.find((c) => !c.ok);
+    latch = updateLatch(latch, ready);
 
     checklist.replaceChildren(
-      ...checks.map((c) =>
-        h("li", { class: c.ok ? "ok" : c.id === "box" ? "optional" : "bad" }, h("span", { class: "mark", "aria-hidden": "true" }, c.ok ? "✓" : c.id === "box" ? "○" : "✗"), c.label, !c.ok && c.hint ? h("small", {}, c.hint) : null),
-      ),
+      ...checks.map((c) => {
+        const optional = c.id === "box";
+        const advisory = c.id === "fullBody" || c.id === "feet";
+        const state = c.ok ? "ok" : optional ? "optional" : advisory ? "tip" : "bad";
+        const mark = c.ok ? "✓" : optional ? "○" : advisory ? "◐" : "✗";
+        return h("li", { class: state }, h("span", { class: "mark", "aria-hidden": "true" }, mark), c.label, !c.ok && c.hint ? h("small", {}, c.hint) : null);
+      }),
     );
     const readyText = calibration ? "Ready to start" : "Ready. Calibrating your step is optional";
-    instruction.textContent = ready ? readyText : (blocker?.hint ?? "");
-    instruction.classList.toggle("ready", ready);
+    instruction.textContent = ready ? readyText : startEnabled(latch) ? "Ready. You can start whenever you are set" : (blocker?.hint ?? "");
+    instruction.classList.toggle("ready", startEnabled(latch));
     progress.value = calibrator.progress;
     progress.hidden = calibrator.step === "done" || !ready;
-    startBtn.disabled = !ready;
+    startBtn.disabled = !startEnabled(latch);
+    startAnywayBtn.hidden = !showStartAnyway(latch, performance.now());
 
     if (ready) {
       if (!announcedReady) say("Ready. Tap start when you are set.");
       announcedReady = true;
     } else {
       announcedReady = false;
-      if (blocker?.hint) say(blocker.hint);
+      if (!startEnabled(latch) && blocker?.hint) say(blocker.hint);
     }
   }
 
@@ -183,6 +194,7 @@ export const cameraSetupScreen: Screen = (root) => {
     speech.unlock();
     handedOff = true;
     app.mode = "camera";
+    app.autoStart = true;
     go("workout");
   }
 
