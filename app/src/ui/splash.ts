@@ -11,7 +11,6 @@ interface Markers {
   end: number;
 }
 
-const FULL_KEY = "chad.splash.full";
 const SESSION_KEY = "chad.splash.seen";
 const DEFAULT_MARKERS: Markers = { echoesStart: 2.0, thousandAt: 2.2, thousandOut: 3.3, freezeAt: 2.6, outlineAt: 3.3, wordmarkAt: 4.1, end: 4.5 };
 const TAGLINE_FROM_S = 0.4;
@@ -22,21 +21,16 @@ const FADE_MS = 240;
 const SKIP_FADE_MS = 160;
 const STATIC_HOLD_MS = 800;
 
-function claimLaunch(): { show: boolean; full: boolean } {
-  let full = true;
+// sessionStorage survives a refresh but not closing the tab or app, so a fresh launch gets the full intro
+// and a refresh within the same session gets the short one.
+function claimLaunch(): { full: boolean } {
   try {
-    if (sessionStorage.getItem(SESSION_KEY)) return { show: false, full: false };
+    const seen = sessionStorage.getItem(SESSION_KEY) !== null;
     sessionStorage.setItem(SESSION_KEY, "1");
+    return { full: !seen };
   } catch {
-    return { show: true, full: true };
+    return { full: true };
   }
-  try {
-    full = !localStorage.getItem(FULL_KEY);
-    localStorage.setItem(FULL_KEY, "1");
-  } catch {
-    full = true;
-  }
-  return { show: true, full };
 }
 
 function asset(name: string): string {
@@ -99,8 +93,8 @@ function styleWordLike(word: HTMLElement, target: HTMLElement): DOMRect {
 }
 
 export function startSplash(): void {
-  const { show, full } = claimLaunch();
-  if (!show || location.hash.startsWith("#/workout")) return;
+  const { full } = claimLaunch();
+  if (location.hash.startsWith("#/workout")) return;
   runSplash(full);
 }
 
