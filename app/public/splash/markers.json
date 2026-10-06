@@ -1,1 +1,9 @@
-{"revealStart":1.0,"slowmoStart":1.0,"echoesStart":2.0,"thousandAt":2.2,"freezeAt":2.6,"outlineAt":2.7,"end":3.2}
+{
+  "revealStart": 1.1,
+  "slowmoStart": 1.0,
+  "echoesStart": 2.0,
+  "thousandAt": 2.3,
+  "freezeAt": 2.6,
+  "outlineAt": 2.72,
+  "end": 3.2
+}
