@@ -95,8 +95,8 @@ export const settingsScreen: Screen = (root) => {
   });
 
   function replayIntro(): void {
+    playSplash({ full: true });
     go("home");
-    window.setTimeout(() => playSplash({ full: true }), 60);
   }
 
   function testVoice(): void {

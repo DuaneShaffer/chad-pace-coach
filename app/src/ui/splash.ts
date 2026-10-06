@@ -61,7 +61,7 @@ function buildOverlay(full: boolean) {
       <source src="${asset("splash.webm")}" type="video/webm">`
     : "";
   root.innerHTML = `
-    <video class="splash-video" muted playsinline preload="${full ? "auto" : "none"}" poster="${asset(full ? "poster.jpg" : "outline.jpg")}">
+    <video class="splash-video" muted playsinline preload="${full ? "auto" : "none"}" poster="${asset(full ? "first.jpg" : "outline.jpg")}">
       ${sources}
     </video>
     <div class="splash-thousand"><div class="splash-num">1,000</div><div class="splash-sub">Step-ups</div></div>
@@ -152,6 +152,7 @@ function runSplash(full: boolean): void {
     if (leaving || matched) return;
     matched = true;
     video.pause();
+    video.poster = asset("outline.jpg");
     thousand.classList.remove("on");
     tag.classList.remove("on");
     const target = homeWordmark();
