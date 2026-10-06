@@ -1,0 +1,229 @@
+import { listWorkouts } from "../platform/storage";
+import { DEFAULT_TAGLINE, taglineFor } from "./splashTagline";
+
+interface Markers {
+  thousandAt: number;
+  freezeAt: number;
+  echoesStart: number;
+  end: number;
+}
+
+const FULL_KEY = "chad.splash.full";
+const SESSION_KEY = "chad.splash.seen";
+const DEFAULT_MARKERS: Markers = { thousandAt: 2.2, freezeAt: 2.6, echoesStart: 2.0, end: 3.2 };
+const TAGLINE_FROM_S = 0.4;
+const SHORT_LEAD_S = 0.6;
+const START_TIMEOUT_MS = 1200;
+const FLIGHT_MS = 450;
+const FADE_MS = 240;
+const SKIP_FADE_MS = 160;
+const STATIC_HOLD_MS = 800;
+
+function claimLaunch(): { show: boolean; full: boolean } {
+  let full = true;
+  try {
+    if (sessionStorage.getItem(SESSION_KEY)) return { show: false, full: false };
+    sessionStorage.setItem(SESSION_KEY, "1");
+  } catch {
+    return { show: true, full: true };
+  }
+  try {
+    full = !localStorage.getItem(FULL_KEY);
+    localStorage.setItem(FULL_KEY, "1");
+  } catch {
+    full = true;
+  }
+  return { show: true, full };
+}
+
+function asset(name: string): string {
+  return `${import.meta.env.BASE_URL}splash/${name}`;
+}
+
+async function loadMarkers(): Promise<Markers> {
+  try {
+    const res = await fetch(asset("markers.json"));
+    return { ...DEFAULT_MARKERS, ...(await res.json()) };
+  } catch {
+    return DEFAULT_MARKERS;
+  }
+}
+
+function buildOverlay() {
+  const root = document.createElement("div");
+  root.className = "splash";
+  root.setAttribute("aria-hidden", "true");
+  root.innerHTML = `
+    <video class="splash-video" muted playsinline preload="auto" poster="${asset("poster.jpg")}">
+      <source src="${asset("splash.mp4")}" type="video/mp4">
+      <source src="${asset("splash.webm")}" type="video/webm">
+    </video>
+    <div class="splash-thousand"><div class="splash-num">1,000</div><div class="splash-sub">Step-ups</div></div>
+    <div class="splash-tag">${DEFAULT_TAGLINE}</div>
+    <div class="splash-word">CHAD</div>`;
+  document.body.append(root);
+  const q = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
+  const video = q<HTMLVideoElement>(".splash-video");
+  video.muted = true;
+  return { root, video, thousand: q(".splash-thousand"), tag: q(".splash-tag"), word: q(".splash-word") };
+}
+
+function homeWordmark(): HTMLElement | null {
+  return location.hash.replace(/^#\/?/, "").split(/[/?]/)[0] in { "": 1, home: 1 }
+    ? document.querySelector<HTMLElement>(".home-head h1")
+    : null;
+}
+
+function styleWordLike(word: HTMLElement, target: HTMLElement): DOMRect {
+  const rect = target.getBoundingClientRect();
+  const cs = getComputedStyle(target);
+  Object.assign(word.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    fontSize: cs.fontSize,
+    fontWeight: cs.fontWeight,
+    fontFamily: cs.fontFamily,
+    letterSpacing: cs.letterSpacing,
+    lineHeight: cs.lineHeight,
+  });
+  return rect;
+}
+
+export function startSplash(): void {
+  const { show, full } = claimLaunch();
+  if (!show || location.hash.startsWith("#/workout")) return;
+
+  const { root, video, thousand, tag, word } = buildOverlay();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let markers = DEFAULT_MARKERS;
+  const markersReady = loadMarkers().then((m) => (markers = m));
+  let leaving = false;
+  let matched = false;
+  let thousandShown = false;
+  let frame = 0;
+  let startTimer = 0;
+  let holdTimer = 0;
+
+  const leave = (fadeMs: number) => {
+    if (leaving) return;
+    leaving = true;
+    cancelAnimationFrame(frame);
+    clearTimeout(startTimer);
+    clearTimeout(holdTimer);
+    window.removeEventListener("pointerdown", skip, true);
+    window.removeEventListener("keydown", skip, true);
+    root.style.setProperty("--splash-fade", `${fadeMs}ms`);
+    root.classList.add("leaving");
+    setTimeout(() => {
+      video.pause();
+      video.removeAttribute("src");
+      video.querySelectorAll("source").forEach((s) => s.remove());
+      video.load();
+      root.remove();
+    }, fadeMs);
+  };
+  const swallowClick = (e: Event) => e.stopPropagation();
+  function skip(e: Event): void {
+    e.preventDefault();
+    if (e.type === "pointerdown") {
+      window.addEventListener("click", swallowClick, true);
+      setTimeout(() => window.removeEventListener("click", swallowClick, true), 400);
+    }
+    leave(SKIP_FADE_MS);
+  }
+  window.addEventListener("pointerdown", skip, true);
+  window.addEventListener("keydown", skip, true);
+
+  const showStatic = () => {
+    if (leaving || matched) return;
+    matched = true;
+    video.pause();
+    thousand.classList.remove("on");
+    tag.classList.remove("on");
+    const target = homeWordmark();
+    if (target) styleWordLike(word, target);
+    else word.classList.add("centered");
+    root.classList.add("static");
+    holdTimer = window.setTimeout(() => leave(FADE_MS), STATIC_HOLD_MS);
+  };
+
+  const matchCut = () => {
+    if (matched || leaving) return;
+    matched = true;
+    thousand.classList.remove("on");
+    thousand.classList.add("off");
+    tag.classList.remove("on");
+    const target = homeWordmark();
+    if (!target) {
+      leave(FADE_MS);
+      return;
+    }
+    const rect = styleWordLike(word, target);
+    const scale = Math.min(window.innerWidth * 0.62, 420) / rect.width;
+    const dx = window.innerWidth / 2 - (rect.width * scale) / 2 - rect.left;
+    const dy = window.innerHeight * 0.46 - (rect.height * scale) / 2 - rect.top;
+    word.classList.add("flying");
+    const flight = word.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 0 },
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 1, offset: 0.18 },
+        { transform: "none", opacity: 1 },
+      ],
+      { duration: FLIGHT_MS, easing: "cubic-bezier(0.2, 0.9, 0.2, 1)", fill: "forwards" },
+    );
+    flight.finished.then(() => leave(FADE_MS)).catch(() => leave(FADE_MS));
+  };
+
+  const update = (t: number) => {
+    if (leaving || matched) return;
+    if (full) tag.classList.toggle("on", t >= TAGLINE_FROM_S && t < markers.echoesStart);
+    if (!thousandShown && t >= markers.thousandAt) {
+      thousandShown = true;
+      thousand.classList.add("on");
+    }
+    if (t >= markers.freezeAt) matchCut();
+  };
+
+  const schedule = () => {
+    if (leaving || matched) return;
+    if (typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback((_now, meta) => {
+        update(meta.mediaTime);
+        schedule();
+      });
+    } else {
+      frame = requestAnimationFrame(() => {
+        update(video.currentTime);
+        schedule();
+      });
+    }
+  };
+
+  if (reduced) {
+    showStatic();
+    return;
+  }
+
+  void listWorkouts()
+    .then((records) => {
+      tag.textContent = taglineFor(records);
+    })
+    .catch(() => {});
+
+  startTimer = window.setTimeout(showStatic, START_TIMEOUT_MS);
+  video.addEventListener("error", showStatic);
+  video.addEventListener("ended", matchCut);
+  video.addEventListener("playing", () => {
+    clearTimeout(startTimer);
+    root.classList.add("playing");
+    schedule();
+  }, { once: true });
+  if (!full) {
+    video.addEventListener("loadedmetadata", () => {
+      void markersReady.then(() => {
+        video.currentTime = Math.max(0, markers.freezeAt - SHORT_LEAD_S);
+      });
+    }, { once: true });
+  }
+  video.play().catch(showStatic);
+}
