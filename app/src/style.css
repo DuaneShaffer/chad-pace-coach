@@ -154,6 +154,8 @@ progress::-moz-progress-bar { background: var(--accent); }
 .delta { font: 900 min(8vw, 5.5vh) var(--display); letter-spacing: 0.06em; margin-top: 8px; color: var(--muted); }
 .delta.ahead, .ahead { color: var(--good); }
 .delta.behind, .behind { color: var(--bad); }
+.diag { min-height: 1.3em; font: 700 min(3.4vw, 2.6vh) var(--display); letter-spacing: 0.06em; color: var(--muted); }
+.checks .optional { color: var(--muted); }
 .need { font: 800 min(5.5vw, 3.8vh) var(--display); letter-spacing: 0.08em; color: var(--bad); min-height: 1.2em; }
 .w-side { display: flex; flex-direction: column; gap: 12px; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -171,6 +173,10 @@ progress::-moz-progress-bar { background: var(--accent); }
 .phase { position: absolute; left: 8px; bottom: 8px; padding: 2px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.7); font: 800 12px var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 .w-controls { position: relative; z-index: 6; display: flex; gap: 12px; }
 .w-controls .btn { flex: 1; min-height: 56px; font-size: 22px; }
+.entry-row { display: flex; flex: 2.6; gap: 12px; min-width: 0; }
+.w-controls.manual .btn { min-height: 72px; font-weight: 900; }
+.w-controls.manual .entry { flex: 1; font-size: 30px; letter-spacing: 0.02em; }
+.w-controls.manual .undo { flex: 1; font-size: 18px; min-width: 0; }
 
 @media (orientation: landscape) and (max-height: 600px) {
   .workout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px 20px; padding-top: calc(var(--safe-t) + 8px); padding-bottom: calc(var(--safe-b) + 8px); }
@@ -189,6 +195,7 @@ progress::-moz-progress-bar { background: var(--accent); }
   .sets { font-size: 20px; gap: 4px 14px; margin-top: 4px; }
   .w-controls { grid-column: 2; grid-row: 3; }
   .w-controls .btn { min-height: 48px; }
+  .w-controls.manual .btn { min-height: 64px; }
   .finish-bar { grid-column: 2; grid-row: 3; }
   .preview { position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 84px); width: 24vw; height: 22vh; z-index: 1; }
   .setup { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: auto 1fr; gap: 12px 16px; }

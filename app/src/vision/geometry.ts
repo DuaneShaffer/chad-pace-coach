@@ -152,3 +152,9 @@ export class StabilityWindow {
     this.samples = [];
   }
 }
+
+const TORSO_INCHES = 20;
+
+export function estimateStepInches(stepTorso: number): number {
+  return Math.round(stepTorso * TORSO_INCHES);
+}

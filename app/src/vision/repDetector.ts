@@ -1,5 +1,5 @@
 import type { Calibration, CalibrationFloor, PoseFrame, RepCandidate } from "../types.ts";
-import { clamp, measureBody, median, Smoother, StabilityWindow, Sustain } from "./geometry.ts";
+import { clamp, estimateStepInches, measureBody, median, Smoother, StabilityWindow, Sustain } from "./geometry.ts";
 import type { BodyMeasure } from "./geometry.ts";
 
 type Phase = "floor" | "rising" | "onBox" | "descending" | "repositioning" | "lost";
@@ -21,13 +21,21 @@ const FLOOR_PERCENTILE_SHARE = 0.15;
 const BELOW_BASELINE_FRACTION = 0.25;
 const BELOW_BASELINE_MS = 300;
 const MAX_RISING_MS = 10000;
-const MIN_SEQUENCE_MS = 150;
+const MIN_SEQUENCE_MS = 80;
 
 const RISE_FRACTION = 0.35;
 const SEQUENCE_FRACTION = 0.5;
-const ON_BOX_FRACTION = 0.6;
-const HIP_ON_BOX_FRACTION = 0.5;
-const OFF_BOX_FRACTION = 0.5;
+const ON_BOX_FRACTION = 0.5;
+const HIP_ON_BOX_FRACTION = 0.6;
+const OFF_BOX_FRACTION = 0.4;
+const TAP_TRAIL_FRACTION = 0.5;
+const PROVISIONAL_STEP_TORSO = 0.5;
+const MIN_LEARNED_STEP_TORSO = 0.3;
+const MAX_LEARNED_STEP_TORSO = 2.5;
+const LEARN_AGREEMENT = 0.25;
+const LEARN_HIP_AGREEMENT = 0.5;
+const LEARNED_REPS_TO_LOCK = 2;
+const ESTIMATE_SHOWN_MS = 8000;
 const FLOOR_FRACTION = 0.25;
 const BASELINE_UPDATE_FRACTION = 0.15;
 const LEVEL_SHIFT_FRACTION = 0.15;
@@ -92,8 +100,16 @@ interface Cycle {
   visibilityCount: number;
   maxGapMs: number;
   onBoxRatios: number[];
+  hipRatios: number[];
   riseSeparationMs: number;
   dropT: { l: number | null; r: number | null };
+}
+
+interface LearnedCycle {
+  t: number;
+  plateau: number;
+  hipPlateau: number;
+  quality: number;
 }
 
 interface Smoothed {
@@ -148,7 +164,11 @@ function averageFrom(history: HistoryPoint[], from: number): HistoryPoint {
 }
 
 export class RepDetector {
-  private readonly box: number;
+  private box: number;
+  private learning: boolean;
+  private learned: LearnedCycle[] = [];
+  private queued: RepCandidate[] = [];
+  private lockedAt: number | null = null;
   private readonly threshold: number;
   private readonly seed: CalibrationFloor | null;
   private currentPhase: Phase = "floor";
@@ -178,15 +198,32 @@ export class RepDetector {
   private readonly floorHold = new Sustain();
   private readonly scaleHold = new Sustain();
 
-  constructor(calibration: Calibration, opts?: { confidenceThreshold?: number }) {
-    this.box = calibration.boxHeightTorso;
+  constructor(calibration: Calibration | null, opts?: { confidenceThreshold?: number }) {
+    this.learning = calibration === null;
+    this.box = calibration?.boxHeightTorso ?? PROVISIONAL_STEP_TORSO;
     this.threshold = opts?.confidenceThreshold ?? 0.8;
-    this.seed = calibration.floor ?? null;
+    this.seed = calibration?.floor ?? null;
     this.seedPending = this.seed !== null;
   }
 
   get phase(): string {
     return this.currentPhase;
+  }
+
+  get diagnostic(): string {
+    if (this.currentPhase === "lost") return "Lost you";
+    if (this.learning) return "Learning your step…";
+    if (this.lockedAt !== null && (this.lastFrameT ?? 0) - this.lockedAt < ESTIMATE_SHOWN_MS) {
+      return `Step height: ${estimateStepInches(this.box)} in (est.)`;
+    }
+    return "";
+  }
+
+  pushAll(frame: PoseFrame): RepCandidate[] {
+    const first = this.push(frame);
+    const out = first ? [first, ...this.queued] : this.queued;
+    this.queued = [];
+    return out;
   }
 
   get suggestedFps(): number {
@@ -434,6 +471,7 @@ export class RepDetector {
       visibilityCount: 0,
       maxGapMs: 0,
       onBoxRatios: [],
+      hipRatios: [],
       riseSeparationMs: 0,
       dropT: { l: null, r: null },
     };
@@ -550,6 +588,7 @@ export class RepDetector {
     const cycle = this.cycle as Cycle;
     const f = this.features(s, this.baseline as Baseline);
     cycle.onBoxRatios.push(f.minAnkle / this.box);
+    cycle.hipRatios.push(f.hip / this.box);
     this.trackDrop(f, s.t, cycle);
     if (this.stalled(s.t, cycle)) return null;
     if (this.offBoxHold.held(f.minAnkle < OFF_BOX_FRACTION * this.box, s.t, OFF_BOX_MS)) this.setPhase("descending");
@@ -574,14 +613,14 @@ export class RepDetector {
       return null;
     }
     const leadGrounded = f.minAnkle < FLOOR_FRACTION * this.box;
-    const trailDown = f.maxAnkle < OFF_BOX_FRACTION * this.box;
+    const trailDown = f.maxAnkle < TAP_TRAIL_FRACTION * this.box;
     if (leadGrounded && trailDown && f.hip < TAP_CLOSE_HIP_FRACTION * this.box) {
       this.cycle = null;
       this.up = { l: null, r: null };
       this.guardUntil = s.t + TAP_GUARD_MS;
       this.prevMaxAnkle = f.maxAnkle;
       this.setPhase("floor");
-      return cycle.armed ? this.evaluate(s.t, cycle) : null;
+      return cycle.armed ? this.finishCycle(s.t, cycle) : null;
     }
     const onFloor = f.maxAnkle < FLOOR_FRACTION * this.box && f.hip < HIP_ON_BOX_FRACTION * this.box;
     if (!this.floorHold.held(onFloor, s.t, FLOOR_MS)) {
@@ -590,18 +629,16 @@ export class RepDetector {
     }
     this.cycle = null;
     this.setPhase("floor");
-    return cycle.armed ? this.evaluate(s.t, cycle) : null;
+    return cycle.armed ? this.finishCycle(s.t, cycle) : null;
   }
 
   private reject(t: number, reason: string, cycle: Cycle): RepCandidate | null {
     return cycle.armed ? { t, confidence: 0, accepted: false, reason } : null;
   }
 
-  private evaluate(t: number, cycle: Cycle): RepCandidate {
+  private cycleQuality(t: number, cycle: Cycle): { quality: number; plausible: boolean; sequenced: boolean; gapPenalty: number } {
     const meanVisibility = cycle.visibilityCount ? cycle.visibilitySum / cycle.visibilityCount : 0;
     const visibility = clamp((meanVisibility - VISIBILITY_ZERO) / (VISIBILITY_FULL - VISIBILITY_ZERO), 0, 1);
-    const ratio = percentile(cycle.onBoxRatios, 0.75);
-    const height = clamp((ratio - 0.5) / 0.3, 0, 1);
     const duration = t - cycle.startT;
     const plausible = duration >= MIN_CYCLE_MS && duration <= MAX_CYCLE_MS;
     const dropSeparation =
@@ -609,16 +646,62 @@ export class RepDetector {
     const sequenced = cycle.riseSeparationMs >= MIN_SEQUENCE_MS && dropSeparation >= MIN_SEQUENCE_MS;
     const gapLimit = this.gapLimitMs();
     const gapPenalty = clamp((cycle.maxGapMs - gapLimit) / (LOST_MS - gapLimit), 0, 1) * MAX_GAP_PENALTY;
+    return {
+      quality: visibility * (plausible ? 1 : 0.2) * (sequenced ? 1 : 0.2) * (1 - gapPenalty),
+      plausible,
+      sequenced,
+      gapPenalty,
+    };
+  }
 
-    const confidence =
-      visibility * height * (plausible ? 1 : 0.2) * (sequenced ? 1 : 0.2) * (1 - gapPenalty);
+  private heightScore(plateauTorso: number): number {
+    return clamp((plateauTorso / this.box - 0.4) / 0.3, 0, 1);
+  }
+
+  private finishCycle(t: number, cycle: Cycle): RepCandidate | null {
+    return this.learning ? this.learnFrom(t, cycle) : this.evaluate(t, cycle);
+  }
+
+  private learnFrom(t: number, cycle: Cycle): RepCandidate | null {
+    const q = this.cycleQuality(t, cycle);
+    const plateau = percentile(cycle.onBoxRatios, 0.75) * this.box;
+    const hipPlateau = percentile(cycle.hipRatios, 0.75) * this.box;
+    const coherent = Math.abs(hipPlateau - plateau) <= LEARN_HIP_AGREEMENT * plateau;
+    const sized = plateau >= MIN_LEARNED_STEP_TORSO && plateau <= MAX_LEARNED_STEP_TORSO;
+    if (!q.plausible || !q.sequenced || !coherent || !sized) {
+      this.learned = [];
+      return null;
+    }
+    const previous = this.learned[this.learned.length - 1];
+    if (previous && Math.abs(previous.plateau - plateau) > LEARN_AGREEMENT * ((previous.plateau + plateau) / 2)) {
+      this.learned = [];
+    }
+    this.learned.push({ t, plateau, hipPlateau, quality: q.quality });
+    if (this.learned.length < LEARNED_REPS_TO_LOCK) return null;
+
+    this.box = this.learned.reduce((sum, c) => sum + c.plateau, 0) / this.learned.length;
+    this.learning = false;
+    this.lockedAt = t;
+    const confirmed = this.learned.map((c): RepCandidate => {
+      const confidence = c.quality * this.heightScore(c.plateau);
+      return { t: c.t, confidence, accepted: confidence >= this.threshold };
+    });
+    this.learned = [];
+    this.queued.push(...confirmed.slice(1));
+    return confirmed[0];
+  }
+
+  private evaluate(t: number, cycle: Cycle): RepCandidate {
+    const q = this.cycleQuality(t, cycle);
+    const height = this.heightScore(percentile(cycle.onBoxRatios, 0.75) * this.box);
+    const confidence = q.quality * height;
     const accepted = confidence >= this.threshold;
     let reason: string | undefined;
     if (!accepted) {
-      if (!sequenced) reason = "feet did not move one after the other";
-      else if (!plausible) reason = "implausible duration";
-      else if (height < 0.9) reason = "did not reach full box height";
-      else if (gapPenalty > 0.1) reason = "tracking dropped during rep";
+      if (!q.sequenced) reason = "feet did not move one after the other";
+      else if (!q.plausible) reason = "implausible duration";
+      else if (height < 0.9) reason = "did not reach full step height";
+      else if (q.gapPenalty > 0.1) reason = "tracking dropped during rep";
       else reason = "low landmark visibility";
     }
     return { t, confidence, accepted, reason };

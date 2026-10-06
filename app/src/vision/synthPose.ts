@@ -105,7 +105,7 @@ export function realisticRep(
   box: number,
   lead: "l" | "r",
   activeMs = 3700,
-  opts: { hipForward?: number; kneeLift?: number } = {},
+  opts: { hipForward?: number; kneeLift?: number; sag?: number } = {},
 ): Partial<FigureState> {
   const u = (tauMs * 3100) / activeMs;
   const lift = opts.kneeLift ?? 0.25;
@@ -116,9 +116,10 @@ export function realisticRep(
   if (u > 2500) trailElev = box * (1 - ramp(u, 2500, 3100));
   const hip = box * (ramp(u, 200, 1300) - ramp(u, 2000, 3000));
   const hipForward = (opts.hipForward ?? 0) * (ramp(u, 100, 1200) - ramp(u, 2000, 3000));
+  const sag = 1 - (opts.sag ?? 0) * ramp(u, 1300, 1700) * (1 - ramp(u, 2000, 2300));
   return lead === "l"
-    ? { lAnkle: leadElev, rAnkle: trailElev, hip, hipForward }
-    : { rAnkle: leadElev, lAnkle: trailElev, hip, hipForward };
+    ? { lAnkle: leadElev * sag, rAnkle: trailElev * sag, hip: hip * sag, hipForward }
+    : { rAnkle: leadElev * sag, lAnkle: trailElev * sag, hip: hip * sag, hipForward };
 }
 
 interface Segment {
@@ -237,12 +238,12 @@ export class Scene {
   reps(
     count: number,
     box: number,
-    opts: { base?: FigureState; pauseMs?: number; activeMs?: number; hipForward?: number } = {},
+    opts: { base?: FigureState; pauseMs?: number; activeMs?: number; hipForward?: number; sag?: number } = {},
   ): void {
     const base = opts.base ?? STANDING;
     const activeMs = opts.activeMs ?? 3700;
     for (let i = 0; i < count; i++) {
-      this.run(activeMs, (tau) => realisticRep(tau, box, i % 2 ? "r" : "l", activeMs, { hipForward: opts.hipForward }), base);
+      this.run(activeMs, (tau) => realisticRep(tau, box, i % 2 ? "r" : "l", activeMs, { hipForward: opts.hipForward, sag: opts.sag }), base);
       this.still(opts.pauseMs ?? 200, base);
     }
   }

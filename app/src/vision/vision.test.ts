@@ -40,7 +40,7 @@ describe("BoxCalibrator", () => {
   it("measures box height in torso units", () => {
     const cal = calibrate(1.1);
     expect(cal.step).toBe("done");
-    expect(cal.instruction).toBe("Box detected");
+    expect(cal.instruction).toBe("Step detected");
     expect(cal.result()?.boxHeightTorso).toBeCloseTo(1.1, 1);
   });
 
@@ -54,7 +54,7 @@ describe("BoxCalibrator", () => {
     const cal = new BoxCalibrator();
     for (const f of scene.frames) cal.push(f);
     expect(cal.step).toBe("floor");
-    expect(cal.instruction).toBe("Stand next to the box");
+    expect(cal.instruction).toBe("Stand next to the step");
     expect(cal.progress).toBeGreaterThan(0.4);
     expect(cal.progress).toBeLessThan(0.7);
   });

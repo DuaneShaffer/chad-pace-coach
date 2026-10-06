@@ -344,3 +344,52 @@ function baseRecord(): WorkoutRecord {
     revolutions: [],
   };
 }
+
+describe("onBulkUpdate", () => {
+  function bulk(mode: AudioMode, count: number, durationMs: number, p: WorkoutPlan = plan) {
+    const clock = { t: 0 };
+    const session = new WorkoutSession(p, "manual", () => clock.t);
+    const coach = new CoachScript(p, settingsFor(mode));
+    session.start();
+    return (n = count) => {
+      clock.t += durationMs;
+      return coach.onBulkUpdate(session.addReps(n), session.snapshot(settingsFor(mode)));
+    };
+  }
+
+  it("speaks one concise announcement for a +100 entry", () => {
+    const log = bulk("full", 100, 384_000);
+    expect(log()).toEqual(["100. Revolution 1, 6 24, 6 seconds under target."]);
+    expect(log()).toEqual(["200. Revolution 2, 6 24, 6 seconds under target."]);
+  });
+
+  it("speaks the final set milestone for a +25 entry", () => {
+    const log = bulk("reps", 25, 100_000);
+    expect(log()).toEqual(["25."]);
+    expect(log()).toEqual(["50."]);
+  });
+
+  it("speaks only the last revolution when a bulk entry spans several", () => {
+    const log = bulk("reps", 200, 800_000);
+    expect(log()).toEqual(["200."]);
+  });
+
+  it("includes halfway and completion", () => {
+    const log = bulk("reps", 100, 1000);
+    for (let i = 0; i < 4; i++) log();
+    expect(log()[0]).toMatch(/^500\. Halfway\./);
+    for (let i = 0; i < 4; i++) log();
+    expect(log()[0]).toMatch(/^Chad complete\./);
+  });
+
+  it("is silent when off and for empty input", () => {
+    expect(bulk("off", 100, 1000)()).toEqual([]);
+    expect(new CoachScript(plan, settingsFor("full")).onBulkUpdate([], snapAt(10, 0))).toEqual([]);
+  });
+
+  it("speaks the split in pace mode only", () => {
+    const log = bulk("pace", 100, 384_000);
+    expect(log()).toEqual(["Revolution 1, 6 24, 6 seconds under target."]);
+    expect(bulk("pace", 25, 100_000)()).toEqual([]);
+  });
+});

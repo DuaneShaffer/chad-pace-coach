@@ -14,6 +14,7 @@ import { drawPose, setCameraProfile } from "../vision/poseEngine";
 import { app } from "./appState";
 import { closeCamera } from "./camera";
 import { h, sleep, svg } from "./dom";
+import { entryOptions } from "./manualEntry";
 import { go } from "./router";
 import type { Screen } from "./router";
 
@@ -26,7 +27,8 @@ const AHEAD_DEADBAND_SEC = 2;
 type Phase = "ready" | "countdown" | "running" | "finishing" | "done";
 
 const FINISH_HOLD_MS = 5000;
-const TAP_DEBOUNCE_MS = 400;
+const TAP_DEBOUNCE_MS = 800;
+const UNDO_NOTE_MS = 2500;
 const END_CONFIRM = "End workout? Your progress will be saved as incomplete.";
 
 function loadLowPower(): boolean {
@@ -75,7 +77,7 @@ export const workoutScreen: Screen = (root) => {
   const settings = getSettings();
   const cameraMode = app.mode === "camera";
   const cam = cameraMode ? app.camera : null;
-  if (cameraMode && !cam?.calibration) {
+  if (cameraMode && !cam) {
     go("setup");
     return;
   }
@@ -83,7 +85,7 @@ export const workoutScreen: Screen = (root) => {
   const session = new WorkoutSession(plan, app.mode);
   const coach = new CoachScript(plan, settings);
   const wake = new ScreenWakeLock();
-  const detector = cam?.calibration ? new RepDetector(cam.calibration, { confidenceThreshold: settings.repConfidenceThreshold }) : null;
+  const detector = cam ? new RepDetector(cam.calibration, { confidenceThreshold: settings.repConfidenceThreshold }) : null;
   let phase: Phase = "ready";
   let disposed = false;
   let saved = false;
@@ -122,7 +124,12 @@ export const workoutScreen: Screen = (root) => {
   const muteIcon = h("button", { type: "button", class: "btn icon", onClick: toggleMute });
   const cameraAlert = h("div", { class: "finish-bar", hidden: true, role: "alert" });
   const finishBar = h("div", { class: "finish-bar", hidden: true, role: "status" }, h("span", {}, "Finishing… saving shortly"), h("button", { type: "button", class: "btn small", onClick: () => correct(-1) }, "Undo"));
-  const mainZone = h("section", cameraMode ? { class: "w-main" } : { class: "w-main tappable", role: "button", tabIndex: 0, "aria-label": "Tap to count a rep" }, h("div", { class: "count-wrap" }, count, h("div", { class: "of mono" }, `/ ${TOTAL_REPS.toLocaleString("en-US")}`)), clock, delta, need);
+  const entryRow = h("div", { class: "entry-row" });
+  const undoBtn = h("button", { type: "button", class: "btn undo", onClick: undoEntry }, "Undo");
+  let entrySignature = "";
+  let undoNoteTimer = 0;
+  const diag = h("div", { class: "diag", role: "status" });
+  const mainZone = h("section", cameraMode ? { class: "w-main" } : { class: "w-main tappable", role: "button", tabIndex: 0, "aria-label": `Tap to log ${plan.setSize} reps` }, h("div", { class: "count-wrap" }, count, h("div", { class: "of mono" }, `/ ${TOTAL_REPS.toLocaleString("en-US")}`)), clock, delta, need, diag);
   const flash = h("div", { class: "flash", hidden: true, role: "status" });
   const overlay = h("div", { class: "overlay-screen" });
   const canvas = h("canvas", { class: "overlay" });
@@ -164,12 +171,14 @@ export const workoutScreen: Screen = (root) => {
       perfReadout,
       cameraAlert,
       finishBar,
-      h(
-        "footer",
-        { class: "w-controls" },
-        h("button", { type: "button", class: "btn", onClick: () => correct(-1), "aria-label": "Remove one rep" }, "−1"),
-        h("button", { type: "button", class: "btn", onClick: () => correct(1), "aria-label": "Add one rep" }, "+1"),
-      ),
+      cameraMode
+        ? h(
+            "footer",
+            { class: "w-controls" },
+            h("button", { type: "button", class: "btn", onClick: () => correct(-1), "aria-label": "Remove one rep" }, "−1"),
+            h("button", { type: "button", class: "btn", onClick: () => correct(1), "aria-label": "Add one rep" }, "+1"),
+          )
+        : h("footer", { class: "w-controls manual" }, entryRow, undoBtn),
       flash,
       overlay,
     ),
@@ -294,7 +303,7 @@ export const workoutScreen: Screen = (root) => {
 
   function onFrame(frame: PoseFrame): void {
     if ((phase !== "running" && phase !== "countdown") || !detector) return;
-    const candidate = detector.push(frame);
+    const candidates = detector.pushAll(frame);
     const fps = detector.suggestedFps;
     if (cam && fps !== lastFps) {
       lastFps = fps;
@@ -304,12 +313,13 @@ export const workoutScreen: Screen = (root) => {
       drawPose(canvas, frame, cam.video);
       setText(phaseBadge, detector.phase);
     }
-    if (phase === "running" && candidate?.accepted) handleRep(candidate.confidence);
+    if (phase === "running") for (const c of candidates) if (c.accepted) handleRep(c.confidence, c.t);
   }
 
-  function handleRep(confidence: number): void {
+  function handleRep(confidence: number, frameT?: number): void {
     if (phase !== "running") return;
-    applyUpdate(session.addRep(confidence));
+    const atMs = frameT === undefined ? undefined : frameT - (performance.now() - session.elapsedMs());
+    applyUpdate(session.addRep(confidence, atMs));
   }
 
   function applyUpdate(update: SessionUpdate): void {
@@ -319,6 +329,53 @@ export const workoutScreen: Screen = (root) => {
     if (update.set && !update.completed) void checkpoint();
     render();
     if (update.completed) beginFinishing();
+  }
+
+  function logEntry(count: number): void {
+    if (phase !== "running") return;
+    const updates = session.addReps(count);
+    if (updates.length === 0) return;
+    const snap = session.snapshot(settings);
+    speakLines(coach.onBulkUpdate(updates, snap), false);
+    const completed = updates.some((u) => u.completed);
+    if (updates.some((u) => u.revolution) && !completed) showRevolutionFlash(FLASH_MS);
+    if (updates.some((u) => u.set) && !completed) void checkpoint();
+    render();
+    if (completed) beginFinishing();
+  }
+
+  function undoEntry(): void {
+    if (phase !== "running" && phase !== "finishing") return;
+    const before = session.reps();
+    session.undoLastEntry();
+    const removed = before - session.reps();
+    if (phase === "finishing") resumeFromFinishing();
+    render();
+    if (removed <= 0) return;
+    undoBtn.textContent = `Removed ${removed}`;
+    window.clearTimeout(undoNoteTimer);
+    undoNoteTimer = window.setTimeout(() => {
+      undoBtn.textContent = "Undo";
+    }, UNDO_NOTE_MS);
+  }
+
+  function renderEntryButtons(reps: number): void {
+    const options = entryOptions(plan, reps);
+    const signature = options.map((o) => o.label).join("|");
+    if (signature !== entrySignature) {
+      entrySignature = signature;
+      entryRow.replaceChildren(
+        ...options.map((o) => h("button", { type: "button", class: "btn primary entry", "aria-label": `Log ${o.count} reps`, onClick: () => manualEntry(o.count) }, o.label)),
+      );
+    }
+    undoBtn.disabled = reps === 0;
+  }
+
+  function manualEntry(count: number): void {
+    const now = performance.now();
+    if (phase !== "running" || now - lastTapAt < TAP_DEBOUNCE_MS) return;
+    lastTapAt = now;
+    logEntry(count);
   }
 
   function correct(delta: number): void {
@@ -362,6 +419,7 @@ export const workoutScreen: Screen = (root) => {
   function render(): void {
     const snap = session.started ? session.snapshot(settings) : computePace(plan, [], 0, settings.rollingWindowSec);
     setText(count, String(snap.reps));
+    if (!cameraMode) renderEntryButtons(snap.reps);
     setText(clock, formatClock(snap.elapsedSec));
 
     const ahead = snap.aheadSec >= AHEAD_DEADBAND_SEC;
@@ -406,9 +464,25 @@ export const workoutScreen: Screen = (root) => {
     detector?.setContext({ repsIntoSet: snap.repsIntoSet, setSize: plan.setSize, reps: snap.reps });
   }
 
+  const lastSpoken = new Map<string, number>();
+  let lastDiagnostic = "";
+
+  function updateDiagnostic(): void {
+    const text = detector?.diagnostic ?? "";
+    setText(diag, text);
+    if (text === lastDiagnostic) return;
+    lastDiagnostic = text;
+    const spokenGapMs = text === "Lost you" ? 20000 : text === "Learning your step…" ? 120000 : -1;
+    const now = performance.now();
+    if (spokenGapMs < 0 || settings.audioMode === "off" || now - (lastSpoken.get(text) ?? -Infinity) < spokenGapMs) return;
+    lastSpoken.set(text, now);
+    speech.say(text, { droppable: true });
+  }
+
   function tick(): void {
     if (phase !== "running") return;
     render();
+    updateDiagnostic();
     const second = Math.floor(session.elapsedMs() / 1000);
     if (second !== lastCoachSecond) {
       lastCoachSecond = second;
@@ -487,10 +561,8 @@ export const workoutScreen: Screen = (root) => {
   }
 
   function manualTap(): void {
-    const now = performance.now();
-    if (phase !== "running" || now - lastTapAt < TAP_DEBOUNCE_MS) return;
-    lastTapAt = now;
-    handleRep(1);
+    const first = entryOptions(plan, session.reps())[0];
+    if (first) manualEntry(first.count);
   }
 
   if (!cameraMode) {
@@ -520,6 +592,7 @@ export const workoutScreen: Screen = (root) => {
     document.documentElement.classList.remove("lowpower");
     window.clearTimeout(flashTimer);
     window.clearTimeout(finishTimer);
+    window.clearTimeout(undoNoteTimer);
     window.removeEventListener("popstate", onPopState);
     window.removeEventListener("beforeunload", onBeforeUnload);
     wake.release();

@@ -3,6 +3,7 @@ import { getSettings, savePlan } from "../platform/settings";
 import { speech } from "../platform/speech";
 import { BoxCalibrator } from "../vision/calibrator";
 import { PoseEngine, drawPose } from "../vision/poseEngine";
+import { estimateStepInches } from "../vision/geometry";
 import { evaluateSetup } from "../vision/setup";
 import { app } from "./appState";
 import type { CameraSession } from "./appState";
@@ -90,11 +91,12 @@ export const cameraSetupScreen: Screen = (root) => {
 
   function checksWithBox(): SetupCheck[] {
     const checks = evaluateSetup(recent).filter((c) => c.id !== "box");
+    const calibration = calibrator.step === "done" ? calibrator.result() : null;
     checks.push({
       id: "box",
-      ok: calibrator.step === "done",
-      label: "Box detected",
-      hint: calibrator.step === "done" ? undefined : calibrator.instruction,
+      ok: calibration !== null,
+      label: calibration ? `Step: ${estimateStepInches(calibration.boxHeightTorso)} in (est.)` : "Step (optional)",
+      hint: calibration ? undefined : calibrator.instruction,
     });
     return checks;
   }
@@ -103,18 +105,20 @@ export const cameraSetupScreen: Screen = (root) => {
     const checks = checksWithBox();
     const calibration = calibrator.step === "done" ? calibrator.result() : null;
     if (app.camera) app.camera.calibration = calibration;
-    const ready = checks.every((c) => c.ok) && calibration !== null;
-    const blocker = checks.find((c) => !c.ok && c.id !== "box");
+    const required = checks.filter((c) => c.id !== "box");
+    const ready = required.every((c) => c.ok);
+    const blocker = required.find((c) => !c.ok);
 
     checklist.replaceChildren(
       ...checks.map((c) =>
-        h("li", { class: c.ok ? "ok" : "bad" }, h("span", { class: "mark", "aria-hidden": "true" }, c.ok ? "✓" : "✗"), c.label, !c.ok && c.hint ? h("small", {}, c.hint) : null),
+        h("li", { class: c.ok ? "ok" : c.id === "box" ? "optional" : "bad" }, h("span", { class: "mark", "aria-hidden": "true" }, c.ok ? "✓" : c.id === "box" ? "○" : "✗"), c.label, !c.ok && c.hint ? h("small", {}, c.hint) : null),
       ),
     );
-    instruction.textContent = ready ? "Ready to start" : (blocker?.hint ?? calibrator.instruction);
+    const readyText = calibration ? "Ready to start" : "Ready. Calibrating your step is optional";
+    instruction.textContent = ready ? readyText : (blocker?.hint ?? "");
     instruction.classList.toggle("ready", ready);
     progress.value = calibrator.progress;
-    progress.hidden = calibrator.step === "done";
+    progress.hidden = calibrator.step === "done" || !ready;
     startBtn.disabled = !ready;
 
     if (ready) {
@@ -122,7 +126,7 @@ export const cameraSetupScreen: Screen = (root) => {
       announcedReady = true;
     } else {
       announcedReady = false;
-      say(blocker?.hint ?? calibrator.instruction);
+      if (blocker?.hint) say(blocker.hint);
     }
   }
 
@@ -168,7 +172,7 @@ export const cameraSetupScreen: Screen = (root) => {
   }
 
   function onStart(): void {
-    if (!app.camera?.calibration) return;
+    if (!app.camera) return;
     speech.unlock();
     handedOff = true;
     app.mode = "camera";

@@ -67,7 +67,30 @@ export class CoachScript {
     return [`Go. Target ${spokenDuration(this.plan.targetTimeSec)}.`];
   }
 
+  onBulkUpdate(updates: SessionUpdate[], snap: PaceSnapshot): string[] {
+    if (updates.length === 0) return [];
+    const completed = updates.some((u) => u.completed);
+    const revolutions = updates.filter((u) => u.revolution);
+    const lastRevolution = revolutions[revolutions.length - 1];
+    const merged: SessionUpdate = {
+      rep: updates[updates.length - 1].rep,
+      set: updates.findLast((u) => u.set)?.set,
+      revolution: lastRevolution?.revolution,
+      completed: completed || undefined,
+    };
+    if (revolutions.length === 1) {
+      merged.revolutionDurationSec = lastRevolution.revolutionDurationSec;
+      merged.revolutionTargetSec = lastRevolution.revolutionTargetSec;
+    }
+    const crossedHalfway = updates.some((u) => u.rep?.cumulativeRep === HALFWAY_REP);
+    return this.announce(merged, snap, crossedHalfway);
+  }
+
   onUpdate(update: SessionUpdate, snap: PaceSnapshot): string[] {
+    return this.announce(update, snap, update.rep?.cumulativeRep === HALFWAY_REP);
+  }
+
+  private announce(update: SessionUpdate, snap: PaceSnapshot, halfway: boolean): string[] {
     if (this.settings.audioMode === "off") return [];
 
     if (update.completed) {
@@ -76,7 +99,6 @@ export class CoachScript {
     }
     if (!this.repsEnabled) return this.paceRevolutionSplit(update, snap.elapsedSec);
 
-    const halfway = update.rep?.cumulativeRep === HALFWAY_REP;
     const rep = update.set?.cumulativeRep ?? update.revolution?.cumulativeRep ?? (halfway ? HALFWAY_REP : undefined);
     if (rep === undefined || rep <= this.highestAnnouncedRep) return [];
     if (!update.revolution && !halfway && snap.elapsedSec - this.lastMilestoneSec < SET_MILESTONE_MIN_GAP_SEC) return [];

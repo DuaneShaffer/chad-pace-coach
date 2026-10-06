@@ -24,6 +24,7 @@ export class WorkoutSession {
   private readonly repEvents: RepEvent[] = [];
   private readonly setEvents: SetEvent[] = [];
   private readonly revolutionEvents: RevolutionEvent[] = [];
+  private readonly entrySizes: number[] = [];
   private startedAtMs = 0;
   private startedAtWall = 0;
   private finishedAtMs: number | null = null;
@@ -63,10 +64,35 @@ export class WorkoutSession {
     return this.repEvents.length;
   }
 
-  addRep(confidence = 1): SessionUpdate {
+  addRep(confidence = 1, atMs?: number): SessionUpdate {
     if (this.completed) return {};
     this.start();
-    const t = this.elapsedMs();
+    const lastT = this.repEvents[this.repEvents.length - 1]?.t ?? 0;
+    const t = atMs === undefined ? this.elapsedMs() : Math.min(this.elapsedMs(), Math.max(lastT, atMs));
+    const update = this.recordRep(t, confidence);
+    this.entrySizes.push(1);
+    return update;
+  }
+
+  addReps(count: number, confidence = 1): SessionUpdate[] {
+    const n = Math.min(Math.floor(count), TOTAL_REPS - this.repEvents.length);
+    if (this.completed || !(n > 0)) return [];
+    this.start();
+    const fromT = this.repEvents[this.repEvents.length - 1]?.t ?? 0;
+    const toT = Math.max(fromT, this.elapsedMs());
+    const updates = Array.from({ length: n }, (_, i) =>
+      this.recordRep(fromT + ((toT - fromT) * (i + 1)) / n, confidence),
+    );
+    this.entrySizes.push(n);
+    return updates;
+  }
+
+  undoLastEntry(): void {
+    const size = this.entrySizes.pop();
+    if (size !== undefined) this.removeReps(size);
+  }
+
+  private recordRep(t: number, confidence: number): SessionUpdate {
     const cumulativeRep = this.repEvents.length + 1;
     const update: SessionUpdate = { rep: { t, cumulativeRep, confidence } };
     this.repEvents.push(update.rep!);
@@ -94,7 +120,13 @@ export class WorkoutSession {
 
   removeLastRep(): void {
     if (this.repEvents.length === 0) return;
-    this.repEvents.pop();
+    const last = this.entrySizes.length - 1;
+    if (last >= 0 && --this.entrySizes[last] <= 0) this.entrySizes.pop();
+    this.removeReps(1);
+  }
+
+  private removeReps(n: number): void {
+    this.repEvents.length = Math.max(0, this.repEvents.length - n);
     this.finishedAtMs = null;
     const count = this.repEvents.length;
     for (const events of [this.setEvents, this.revolutionEvents]) {

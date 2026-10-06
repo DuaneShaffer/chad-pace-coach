@@ -311,43 +311,53 @@ describe("BoxCalibrator regressions", () => {
   }
   const onBox = (h: number): FigureState => ({ ...STANDING, lAnkle: h, rAnkle: h, hip: h });
 
-  it("rejects a camera bump instead of a box step", () => {
+  it("rejects a camera bump too small to be a step", () => {
     const cal = calibrateWith((s) => {
       s.still(2000);
-      s.still(2500, { ...STANDING, globalDy: -0.07 });
+      s.still(2500, { ...STANDING, globalDy: -0.03 });
     });
     expect(cal.result()).toBeNull();
   });
 
-  it("rejects a plate-height step", () => {
+  it("rejects a step that is too low", () => {
     const cal = calibrateWith((s) => {
       s.still(2000);
-      s.run(1300, (t) => realisticRep(t, 0.4, "l", 3600));
-      s.still(2500, onBox(0.4));
+      s.run(1300, (t) => realisticRep(t, 0.2, "l", 3600));
+      s.still(2500, onBox(0.2));
     });
     expect(cal.result()).toBeNull();
   });
 
-  it("rejects a box that is too tall", () => {
+  it("rejects an absurdly tall surface", () => {
     const cal = calibrateWith((s) => {
       s.still(2000);
-      s.run(1300, (t) => realisticRep(t, 1.9, "l", 3600));
-      s.still(2500, onBox(1.9));
+      s.run(1300, (t) => realisticRep(t, 3.2, "l", 3600));
+      s.still(2500, onBox(3.2));
     });
     expect(cal.result()).toBeNull();
   });
 
-  it("rejects a two-footed jump onto the box", () => {
+  for (const height of [0.4, 0.55, 1.5, 2.2]) {
+    it(`accepts a ${height} torso step`, () => {
+      const cal = calibrateWith((s) => {
+        s.still(2000);
+        s.run(1300, (t) => realisticRep(t, height, "l", 3600));
+        s.still(2500, onBox(height));
+      });
+      expect(cal.result()?.boxHeightTorso).toBeCloseTo(height, 1);
+    });
+  }
+
+  it("does not calibrate on a two-footed jump that lands back on the floor", () => {
     const cal = calibrateWith((s) => {
       s.still(2000);
       s.run(500, (t) => {
-        const e = BOX * smoothstep(t / 500);
+        const e = BOX * Math.sin((Math.PI * t) / 500);
         return { lAnkle: e, rAnkle: e, hip: e };
       });
-      s.still(2500, onBox(BOX));
+      s.still(3000);
     });
     expect(cal.result()).toBeNull();
-    expect(cal.step).toBe("floor");
   });
 
   it("rejects a change in distance between the floor and box steps", () => {
